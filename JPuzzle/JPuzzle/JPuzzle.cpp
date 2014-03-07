@@ -333,10 +333,8 @@ HRESULT JPuzzle::Init(char * file, int nToLoad, ID3D10Device * pDevice)
 		m_PuzzlePieces[m_nPuzzlePieces++] = piece;
 
 		Texture tmpTex(piece.tex);
-		//for (int k=0; i<m_MaxEdgeInsets; k++)
-			ProcessPuzzlePiece(tmpTex, 0, pDevice);
-			//ProcessPuzzlePiece(tmpTex, 1, pDevice);
-			//ProcessPuzzlePiece(tmpTex, 2, pDevice);
+		for (int k=0; k<m_MaxEdgeInsets; k++)
+			ProcessPuzzlePiece(tmpTex, k, pDevice);
 
 		if (i>=nToLoad-1) break;
 	}
@@ -650,19 +648,26 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 			int edgeSize = 0;
 			for (int j=endPoints[i]; j!=endPoints[(i+1)%4]; j=(j+1)%nPoints) edgeSize++;
 
-			piece.nEdgeColors[i][edgeInsetLevel] = edgeSize;
-			piece.edgeColors[i][edgeInsetLevel] = new Color[edgeSize];
-			for (int j=endPoints[i]; j!=endPoints[(i+1)%4]; j=(j+1)%nPoints) {
+			//piece.nEdgeColors[i][edgeInsetLevel] = edgeSize;
+			//piece.edgeColors[i][edgeInsetLevel] = new Color[edgeSize];
+			piece.edgeColors[i][edgeInsetLevel].resize(edgeSize);
+			for (int j=endPoints[i], count=0; j!=endPoints[(i+1)%4]; j=(j+1)%nPoints, count++) {
 				
-				piece.edgeColors[i][edgeInsetLevel][j] = tex(pixelBoundaryPos[j].y(), pixelBoundaryPos[j].x());
+				//piece.edgeColors[i][edgeInsetLevel][count] = tex(pixelBoundaryPos[j].y(), pixelBoundaryPos[j].x());
+				piece.edgeColors[i][edgeInsetLevel][count] = tex(pixelBoundaryPos[j].y(), pixelBoundaryPos[j].x());
 				tex(pixelBoundaryPos[j].y(), pixelBoundaryPos[j].x()).w() = 0;
 
 				UINT rowStart = (int)(pixelBoundaryPos[j].y()) * mappedTex.RowPitch;
 				UINT colStart =  (int)(pixelBoundaryPos[j].x()) * 4;
-				pTexels[rowStart + colStart + 0] = edgeInsetLevel == 0 ? 255 : 0;
+				/*pTexels[rowStart + colStart + 0] = i == 0 ? 255 : 0;
+				pTexels[rowStart + colStart + 1] = i == 1 ? 255 : 0;
+				pTexels[rowStart + colStart + 2] = i == 2 ? 255 : 0; 
+				pTexels[rowStart + colStart + 3] = 255;
+				*/
+				/*pTexels[rowStart + colStart + 0] = edgeInsetLevel == 0 ? 255 : 0;
 				pTexels[rowStart + colStart + 1] = edgeInsetLevel == 1 ? 255 : 0;
 				pTexels[rowStart + colStart + 2] = edgeInsetLevel == 2 ? 255 : 0; 
-				pTexels[rowStart + colStart + 3] = 0;
+				pTexels[rowStart + colStart + 3] = 255;*/
 			}
 		}
 
@@ -670,25 +675,20 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 		return;
 	}
 
-	EdgePoint ** edges = piece.edges;
+	std::vector<EdgePoint> * edges = piece.edges;
 	for (int i=0; i<4; i++) {
-		int nEdgePoints=0;
-		for (int j=endPoints[i]; j!=endPoints[(i+1)%4]; j=(j+1)%nPoints) nEdgePoints++;
-		
-		piece.edges[i] = new EdgePoint[nEdgePoints];
-		piece.nEdgePoints[i] = nEdgePoints;
-		for (int j=endPoints[i], count=0; j!=endPoints[(i+1)%4]; j=(j+1)%nPoints, count++) {
+		edges[i].reserve(nPoints);
+		for (int j=endPoints[i]; j!=endPoints[(i+1)%4]; j=(j+1)%nPoints) {
 			EdgePoint bd;
 			bd.pos = pixelBoundaryPos[j];
 			bd.k = curvatures[j];
-			edges[i][count] = bd;
+			edges[i].push_back(bd);
 		}
 		piece.endPoints[i] = pixelBoundaryPos[endPoints[i]];
 	}
 
 	/* Compute stats */
 	for (int i=0; i<4; i++) {
-		int edgesSize = piece.nEdgePoints[i];
 		//std::fstream out1("out3.txt");
 		//std::fstream out2("out4.txt");
 
@@ -703,14 +703,15 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 		piece.totalCurvature[i] = 0;
 		piece.totalLength[i] = 0;
 		int nProjectedPoints = ceil(edgeLen);
-		piece.projectedPoints[i] = new float[nProjectedPoints];
-		piece.nProjectedPoints[i] = nProjectedPoints;
-		memset(piece.projectedPoints[i], 0, nProjectedPoints*sizeof(float));
-		piece.edgeColors[i][edgeInsetLevel] = new Color[edgesSize];
-		piece.nEdgeColors[i][edgeInsetLevel] = edgesSize;
-		for (int j=0; j<edgesSize; j++) {
+		piece.projectedPoints[i].resize(nProjectedPoints);
+		memset(piece.projectedPoints[i].data(), 0, nProjectedPoints*sizeof(float));
+		//piece.edgeColors[i][edgeInsetLevel] = new Color[edges[i].size()];
+		//piece.nEdgeColors[i][edgeInsetLevel] = edges[i].size();
+		piece.edgeColors[i][edgeInsetLevel].resize(edges[i].size());
+		for (int j=0; j<edges[i].size(); j++) {
 			// Assign color
 			piece.edgeColors[i][edgeInsetLevel][j] = tex(edges[i][j].pos.y(), edges[i][j].pos.x());
+			//piece.edgeColors[i][edgeInsetLevel][j] = tex(edges[i][j].pos.y(), edges[i][j].pos.x());
 			tex(edges[i][j].pos.y(), edges[i][j].pos.x()).w() = 0;
 
 			// Compute total curvature and len 
@@ -735,8 +736,7 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 			if (j>0){
 				for (int k=xLow; k<=xHigh; k++) {
 					float t = (xy2.x()-xy1.x());
-					assert(t != 0);
-					t = ((float)xLow-(xy1.x()/edgeLen)*nProjectedPoints)/t;
+					if (t != 0) t = ((float)xLow-(xy1.x()/edgeLen)*nProjectedPoints)/t;
 					float y = (1-t)*xy1.y()+t*xy2.y();
 					if (y >= 0 && piece.projectedPoints[i][k] < y) piece.projectedPoints[i][k] = y;
 					else if (y <= 0 && piece.projectedPoints[i][k] > y) piece.projectedPoints[i][k] = y;
@@ -750,14 +750,14 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 			pTexels[rowStart + colStart + 0] = edgeInsetLevel == 0 ? 255 : 0;
 			pTexels[rowStart + colStart + 1] = edgeInsetLevel == 1 ? 255 : 0;
 			pTexels[rowStart + colStart + 2] = edgeInsetLevel == 2 ? 255 : 0; 
-			pTexels[rowStart + colStart + 3] = 0;
+			pTexels[rowStart + colStart + 3] = 255;
 
 			previousPt = edges[i][j].pos;
 		}
 		//for (int ii=0; ii<nProjectedPoints; ii++) {
 		//	out2 << ii << ' ' << piece.projectedPoints[i][ii] << std::endl;
 		//}
-		if ((float)nZeros/edgesSize > .75) {
+		if ((float)nZeros/edges[i].size() > .75) {
 			piece.edgeCovered[i] = 1;
 			piece.isBorderPiece = 1;
 		}
@@ -897,34 +897,30 @@ float JPuzzle::CompareEdgesByShape(PuzzlePiece & a, PuzzlePiece & b, int k, int 
 	//std::ofstream out1("out1.txt");
 	//std::ofstream out2("out2.txt");
 
-	float * longProjectedPoints;
-	float * shortProjectedPoints;
-	float longSize;
-	float shortSize;
+	std::vector<float> * longProjectedPoints;
+	std::vector<float> * shortProjectedPoints;
 	
-	if (a.nProjectedPoints[k] > b.nProjectedPoints[l]) {
-		longProjectedPoints = a.projectedPoints[k], shortProjectedPoints = b.projectedPoints[l];
-		longSize = a.nProjectedPoints[k], shortSize = b.nProjectedPoints[l];
+	if (a.projectedPoints[k].size() > b.projectedPoints[l].size()) {
+		longProjectedPoints = &a.projectedPoints[k], shortProjectedPoints = &b.projectedPoints[l];
 	} else {
-		shortProjectedPoints = a.projectedPoints[k], longProjectedPoints = b.projectedPoints[l];
-		shortSize = a.nProjectedPoints[k], longSize = b.nProjectedPoints[l];
+		shortProjectedPoints = &a.projectedPoints[k], longProjectedPoints = &b.projectedPoints[l];
 	}
 
 	auto Compare = [&] (int offset) {
 		float sum=0;
-		int longEdgeSize = longSize;
-		for (int i=0, end=shortSize; i<end; i++) {
-			float hs = shortProjectedPoints[end-i-1];
+		int longEdgeSize = longProjectedPoints->size();
+		for (int i=0, end=shortProjectedPoints->size(); i<end; i++) {
+			float hs = (*shortProjectedPoints)[end-i-1];
 			//out1 << i << ' ' << hs << std::endl;
-			float hl = longProjectedPoints[i+offset];
+			float hl = (*longProjectedPoints)[i+offset];
 			//out2 << i << ' ' << -hl << std::endl;
 			sum += abs(hs+hl);
 		}
 		return sum;
 	};
 
-	int offset = (longSize-shortSize)/2;
-	float measure = Compare(offset)/shortSize;
+	int offset = (longProjectedPoints->size()-shortProjectedPoints->size())/2;
+	float measure = Compare(offset)/shortProjectedPoints->size();
 
 	if (k==3 && l == 1) {
 		int a=0;

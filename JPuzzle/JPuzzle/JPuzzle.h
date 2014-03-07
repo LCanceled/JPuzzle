@@ -66,7 +66,7 @@ struct Texture {
 
 class JPuzzle {
 private:
-	static const int m_MaxEdgeInsets=4;
+	static const int m_MaxEdgeInsets=3;
 
 	struct EdgePoint {
 		Vector2f pos;
@@ -79,14 +79,9 @@ private:
 		Vector2f endPoints[4];
 		Vector2f edgeNor[4];
 
-		EdgePoint * edges[4];
-		int nEdgePoints[4];
-		
-		Color * edgeColors[4][m_MaxEdgeInsets];
-		int nEdgeColors[4][m_MaxEdgeInsets];
-		
-		float * projectedPoints[4];
-		int nProjectedPoints[4];
+		std::vector<EdgePoint> edges[4];	
+		std::vector<Color> edgeColors[4][m_MaxEdgeInsets];
+		std::vector<float> projectedPoints[4];
 
 		bool isBorderPiece; 
 		bool edgeCovered[4];
