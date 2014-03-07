@@ -2,8 +2,11 @@
 #include "JPuzzle.h"
 #include <string>
 #include <fstream>
+#include <stack>
+#include <Eigen/Eigenvalues> 
+#include <queue>
 
-JPuzzle::JPuzzle():m_pEffect(0), m_pTechnique(0), m_pVertexLayout(0), m_pVBQuad(0), m_pIBQuad(0), m_pSRVPuzzleTextureFx(0), m_pWorldfx(0)
+JPuzzle::JPuzzle():m_pEffect(0), m_pTechnique(0), m_pVertexLayout(0), m_pVBQuad(0), m_pIBQuad(0), m_pSRVPuzzleTextureFx(0), m_pWorldfx(0), m_nPiecesAdded(0)
 {
 }
 
@@ -113,6 +116,146 @@ HRESULT JPuzzle::CreateGraphics(ID3D10Device * pDevice)
 	return S_OK;
 }
 
+HRESULT JPuzzle::ExtractPuzzlePieces(char * file, ID3D10Device * pDevice)
+{
+	ID3D10Texture2D * pTexture;
+	D3DX10_IMAGE_LOAD_INFO loadInfo;
+	ZeroMemory( &loadInfo, sizeof(D3DX10_IMAGE_LOAD_INFO));
+	loadInfo.MipLevels = 1;
+	loadInfo.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	loadInfo.Usage = D3D10_USAGE_STAGING;
+	loadInfo.CpuAccessFlags = D3D10_CPU_ACCESS_READ;
+	loadInfo.BindFlags = 0;
+	std::string fileName(file+std::string(".png"));
+	if (FAILED(D3DX10CreateTextureFromFileA(pDevice, fileName.c_str(), &loadInfo, NULL, (ID3D10Resource**)&pTexture, NULL)))
+		DebugBreak();
+
+	D3D10_TEXTURE2D_DESC desc;
+	pTexture->GetDesc(&desc);
+	Texture tex;
+	tex.Init(desc.Width, desc.Height);
+
+	D3D10_MAPPED_TEXTURE2D mappedTex;
+	pTexture->Map(D3D10CalcSubresource(0, 0, 1), D3D10_MAP_READ, 0, &mappedTex);
+	UCHAR* pTexels = (UCHAR*)mappedTex.pData;
+	for( UINT row = 0; row < desc.Height; row++ )
+	{
+		UINT rowStart = row * mappedTex.RowPitch;
+		for( UINT col = 0; col < desc.Width; col++ )
+		{
+			UINT colStart = col * 4;
+			tex(row, col) = Vector4f(
+				pTexels[rowStart + colStart + 0], 
+				pTexels[rowStart + colStart + 1], 
+				pTexels[rowStart + colStart + 2], 
+				pTexels[rowStart + colStart + 3]);
+		}
+	}
+	pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
+	pTexture->Release();
+
+	int count=0;
+	Texture tmpTex; 
+	tmpTex.Init(tex.width, tex.height);
+	std::vector<Vector2f> piecePixels;
+	piecePixels.resize(tex.width*tex.height);
+	for (int i=0; i<tex.height; i++) {
+		for (int j=0; j<tex.width; j++) {
+			if (tex(i,j).w() > 0) {
+				char fileName[256];
+				sprintf(fileName, "%s/%s_%.3i.png", file, file, count+1);
+				if (ExtractPiece(tex, tmpTex, piecePixels, i, j, pDevice, fileName)) count++;
+			}
+		}
+	}
+	exit(0);
+
+	return S_OK;
+}
+
+bool JPuzzle::ExtractPiece(Texture & tex, Texture & tmpTex, std::vector<Vector2f> & piecePixels, int i, int j, ID3D10Device * pDevice, char * fileName)
+{
+	tmpTex.ClearChannels();
+
+	int nPiecePixels = 0;
+	std::queue<std::pair<int,int> > q;
+	q.push(std::pair<int,int>(i,j));
+	while (!q.empty()) {
+		std::pair<int,int> pair = q.front();
+		q.pop();
+		int ii=pair.first, jj=pair.second;
+		if (tex(ii, jj).w() == 0) continue;
+
+		tmpTex(ii,jj) = tex(ii,jj);
+		tex(ii,jj).w() = 0;
+		piecePixels[nPiecePixels++] = Vector2f(jj,ii);
+
+		if (tex(ii+1, jj).w() > 0) {q.push(std::pair<int,int>(ii+1,jj)); }
+		if (tex(ii-1, jj).w() > 0) {q.push(std::pair<int,int>(ii-1,jj)); }
+		if (tex(ii, jj+1).w() > 0) {q.push(std::pair<int,int>(ii,jj+1)); }
+		if (tex(ii, jj-1).w() > 0) {q.push(std::pair<int,int>(ii,jj-1)); }
+		if (tex(ii+1, jj+1).w() > 0) {q.push(std::pair<int,int>(ii+1,jj+1)); }
+		if (tex(ii-1, jj+1).w() > 0) {q.push(std::pair<int,int>(ii-1,jj+1)); }
+		if (tex(ii+1, jj-1).w() > 0) {q.push(std::pair<int,int>(ii+1,jj-1)); }
+		if (tex(ii-1, jj-1).w() > 0) {q.push(std::pair<int,int>(ii-1,jj-1)); }
+	}
+	if (nPiecePixels < 200) return 0;
+	
+	float xMin=FLT_MAX, xMax=-FLT_MIN, yMin=FLT_MAX, yMax=-FLT_MAX; 
+	for (int i=0; i<nPiecePixels; i++) {
+		if (piecePixels[i].x() < xMin) xMin = piecePixels[i].x();
+		if (piecePixels[i].x() > xMax) xMax = piecePixels[i].x();
+		if (piecePixels[i].y() < yMin) yMin = piecePixels[i].y();
+		if (piecePixels[i].y() > yMin) yMax = piecePixels[i].y();
+	}
+
+	int bbWidth = xMax-xMin;
+	int bbHeight = yMax-yMin;
+	int offsetX = xMin-(g_TextureSize-bbWidth)/2;
+	int offsetY = yMin-(g_TextureSize-bbHeight)/2;
+
+	ID3D10Texture2D * pTexture;
+	D3D10_TEXTURE2D_DESC texDesc;
+	ZeroMemory(&texDesc, sizeof(D3D10_TEXTURE2D_DESC));
+	texDesc.MipLevels = 1;
+	texDesc.Width = g_TextureSize;
+	texDesc.Height = g_TextureSize;
+	texDesc.ArraySize = 1;
+	texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	texDesc.Usage = D3D10_USAGE_DYNAMIC;
+	texDesc.CPUAccessFlags = D3D10_CPU_ACCESS_WRITE;
+	texDesc.BindFlags = D3D10_BIND_SHADER_RESOURCE;
+	DXGI_SAMPLE_DESC sampleDesc = {1, 0};
+	texDesc.SampleDesc = sampleDesc;
+	if (FAILED(pDevice->CreateTexture2D(&texDesc, 0, &pTexture)))
+		DebugBreak();
+
+	D3D10_MAPPED_TEXTURE2D mappedTex;
+	pTexture->Map(D3D10CalcSubresource(0, 0, 1), D3D10_MAP_WRITE_DISCARD, 0, &mappedTex);
+	UCHAR* pTexels = (UCHAR*)mappedTex.pData;
+	for(UINT row = 0; row < g_TextureSize; row++ ) {
+		UINT rowStart = row * mappedTex.RowPitch;
+		for( UINT col = 0; col < g_TextureSize; col++ ) {
+			UINT colStart = col * 4;
+
+			Vector4f color(0,0,0,0);
+			if (tmpTex.Inside(offsetY+row, offsetX+col)) color = tmpTex(offsetY+row, offsetX+col);
+			pTexels[rowStart + colStart + 0] = color[0];
+			pTexels[rowStart + colStart + 1] = color[1];
+			pTexels[rowStart + colStart + 2] = color[2];
+			pTexels[rowStart + colStart + 3] = color[3];
+		}
+	}
+	pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
+
+	if (FAILED(D3DX10SaveTextureToFileA(pTexture, D3DX10_IFF_PNG, fileName)))
+		DebugBreak();
+
+	pTexture->Release();
+
+	return 1;
+}
+
 HRESULT JPuzzle::Init(char * file, ID3D10Device * pDevice)
 {
 	HRESULT hr = CreateGraphics(pDevice);
@@ -121,60 +264,83 @@ HRESULT JPuzzle::Init(char * file, ID3D10Device * pDevice)
 	/* Load puzzle pieces and textures */
 	std::string sFile(file);
 	sFile += "/";
-	WIN32_FIND_DATAA findFileData;
-	HANDLE hFind = FindFirstFileA((sFile+"*").c_str(), &findFileData);
-	while (FindNextFileA(hFind, &findFileData) != 0) {
-		if (strstr(findFileData.cFileName, "png")) {
-			ID3D10ShaderResourceView * pRSV = NULL;
-			D3DX10_IMAGE_LOAD_INFO loadInfo;
-			ZeroMemory( &loadInfo, sizeof(D3DX10_IMAGE_LOAD_INFO));
-			loadInfo.MipLevels = 1;
-			loadInfo.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-			loadInfo.Usage = D3D10_USAGE_DYNAMIC;
-			loadInfo.CpuAccessFlags = D3D10_CPU_ACCESS_WRITE;
-			loadInfo.BindFlags = D3D10_BIND_SHADER_RESOURCE;
-			if (FAILED(D3DX10CreateShaderResourceViewFromFileA(pDevice, (sFile+findFileData.cFileName).c_str(), &loadInfo, NULL, &pRSV, NULL))) 
-				DebugBreak();
-			m_rgSRVPuzzleTexture.push_back(pRSV);
-
-			/* Create the puzzle piece */
-			PuzzlePiece piece;
-			ID3D10Texture2D * pTexture;
-			loadInfo.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-			loadInfo.Usage = D3D10_USAGE_STAGING;
-			loadInfo.CpuAccessFlags = D3D10_CPU_ACCESS_READ;
-			loadInfo.BindFlags = 0;
-			if (FAILED(D3DX10CreateTextureFromFileA(pDevice, (sFile+findFileData.cFileName).c_str(), &loadInfo, NULL, (ID3D10Resource**)&pTexture, NULL)))
-				DebugBreak();
-
-			D3D10_TEXTURE2D_DESC desc;
-			pTexture->GetDesc(&desc);
-			D3D10_MAPPED_TEXTURE2D mappedTex;
-			pTexture->Map(D3D10CalcSubresource(0, 0, 1), D3D10_MAP_READ, 0, &mappedTex);
-			piece.tex.Init(desc.Width, desc.Height);
-			UCHAR* pTexels = (UCHAR*)mappedTex.pData;
-			for( UINT row = 0; row < desc.Height; row++ )
-			{
-				UINT rowStart = row * mappedTex.RowPitch;
-				for( UINT col = 0; col < desc.Width; col++ )
-				{
-					UINT colStart = col * 4;
-					piece.tex(row, col) = Vector4f(
-						pTexels[rowStart + colStart + 0], 
-						pTexels[rowStart + colStart + 1], 
-						pTexels[rowStart + colStart + 2], 
-						pTexels[rowStart + colStart + 3]);
-				}
+	std::vector<std::string> fileNames;
+	auto GetPuzzleFiles = [&]() {
+		WIN32_FIND_DATAA findFileData;
+		HANDLE hFind = FindFirstFileA((sFile+"*").c_str(), &findFileData);
+		while (FindNextFileA(hFind, &findFileData) != 0) {
+			if (strstr(findFileData.cFileName, "png")) {
+				fileNames.push_back(findFileData.cFileName);
 			}
-			pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
-			m_PuzzlePieces.push_back(piece);
-			pTexture->Release();
-
-			ProcessPuzzlePiece(pDevice);
 		}
+	};
+	GetPuzzleFiles();
+	if (fileNames.size() < 1) {
+		ExtractPuzzlePieces(file, pDevice);
+		GetPuzzleFiles();
+	}
+	
+	m_nPuzzlePieces = 0;
+	m_PuzzlePieces = new PuzzlePiece[fileNames.size()];
+	for (int i=0; i<fileNames.size(); i++) {
+		ID3D10ShaderResourceView * pRSV = NULL;
+		D3DX10_IMAGE_LOAD_INFO loadInfo;
+		ZeroMemory( &loadInfo, sizeof(D3DX10_IMAGE_LOAD_INFO));
+		loadInfo.MipLevels = 1;
+		loadInfo.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		loadInfo.Usage = D3D10_USAGE_DYNAMIC;
+		loadInfo.CpuAccessFlags = D3D10_CPU_ACCESS_WRITE;
+		loadInfo.BindFlags = D3D10_BIND_SHADER_RESOURCE;
+		if (FAILED(D3DX10CreateShaderResourceViewFromFileA(pDevice, (sFile+fileNames[i]).c_str(), &loadInfo, NULL, &pRSV, NULL))) 
+			DebugBreak();
+
+		/* Create the puzzle piece */
+		PuzzlePiece piece;
+		piece.SRVPuzzleTexture = pRSV;
+		ID3D10Texture2D * pTexture;
+		loadInfo.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		loadInfo.Usage = D3D10_USAGE_STAGING;
+		loadInfo.CpuAccessFlags = D3D10_CPU_ACCESS_READ;
+		loadInfo.BindFlags = 0;
+		if (FAILED(D3DX10CreateTextureFromFileA(pDevice, (sFile+fileNames[i]).c_str(), &loadInfo, NULL, (ID3D10Resource**)&pTexture, NULL)))
+			DebugBreak();
+
+		D3D10_TEXTURE2D_DESC desc;
+		pTexture->GetDesc(&desc);
+		D3D10_MAPPED_TEXTURE2D mappedTex;
+		pTexture->Map(D3D10CalcSubresource(0, 0, 1), D3D10_MAP_READ, 0, &mappedTex);
+		piece.tex.Init(desc.Width, desc.Height);
+		UCHAR* pTexels = (UCHAR*)mappedTex.pData;
+		for( UINT row = 0; row < desc.Height; row++ )
+		{
+			UINT rowStart = row * mappedTex.RowPitch;
+			for( UINT col = 0; col < desc.Width; col++ )
+			{
+				UINT colStart = col * 4;
+				piece.tex(row, col) = Vector4f(
+					pTexels[rowStart + colStart + 0], 
+					pTexels[rowStart + colStart + 1], 
+					pTexels[rowStart + colStart + 2], 
+					pTexels[rowStart + colStart + 3]);
+			}
+		}
+		pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
+		pTexture->Release();
+
+		piece.transform = Matrix4f::Identity();
+		m_PuzzlePieces[m_nPuzzlePieces++] = piece;
+
+		ProcessPuzzlePiece(pDevice);
+			
+		//if (i>=8) break;
+	}
+	m_nPiecesAdded = 1;
+	m_AddedPuzzlePieces.push_back(&m_PuzzlePieces[0]);
+	for (int i=1; i<m_nPuzzlePieces; i++) {
+		m_NotAddedPuzzlePieces.push_back(&m_PuzzlePieces[i]);
 	}
 
-	ComparePieces();
+	return S_OK;
 }
 
 bool JPuzzle::OnOutsideBoundary(int i, int j, Texture & tex)
@@ -183,23 +349,29 @@ bool JPuzzle::OnOutsideBoundary(int i, int j, Texture & tex)
 		return 0;
 
 	int k=-1+i;
-	float ar[3][3];
 	for (; k<=i+1; k++) {
 		int l=-1+j;
 		for (; l<=j+1; l++) {
 			if (tex(k, l).w() > 0) 
 				return 1;
-			//ar[k-i+1][l-j+1] = tex(k,l).w();
 		}
 	}
 	return 0;
+	//return tex(i-1,j).w() > 0 || tex(i+1,j).w() > 0 || tex(i,j-1).w() > 0 || tex(i,j+1).w() > 0;
+}
+
+int CompareCurvature(const void * a, const void * b) 
+{
+	if ( *(float*)a <  *(float*)b ) return (int)-1;
+	if ( *(float*)a == *(float*)b ) return (int)0;
+	if ( *(float*)a >  *(float*)b ) return (int)1;
 }
 
 void JPuzzle::ProcessPuzzlePiece(ID3D10Device * pDevice)
 {
-	PuzzlePiece & piece = m_PuzzlePieces.back();
+	PuzzlePiece & piece = m_PuzzlePieces[m_nPuzzlePieces-1];
 
-	/* Find pixel on boundary */
+	/* Find pixels on boundary */
 	int i=piece.tex.height/2, j=0;
 	for (; j<piece.tex.width; j++) {
 		if (piece.tex(i, j).w() > 0) break;
@@ -213,99 +385,201 @@ void JPuzzle::ProcessPuzzlePiece(ID3D10Device * pDevice)
 
 	D3D10_MAPPED_TEXTURE2D mappedTex;
 	ID3D10Texture2D * pTexture;
-	m_rgSRVPuzzleTexture.back()->GetResource((ID3D10Resource**)&pTexture);
+	piece.SRVPuzzleTexture->GetResource((ID3D10Resource**)&pTexture);
 	pTexture->Map(D3D10CalcSubresource(0, 0, 1), D3D10_MAP_WRITE_DISCARD, 0, &mappedTex);
 	UCHAR* pTexels = (UCHAR*)mappedTex.pData;
-	std::vector<Vector2f> linePos;
+	std::vector<Vector2f> pixelBoundaryPos;
+	//std::vector<Vector2f> boundaryPos;
+	std::vector<Vector2f> tmpBoundaryPos;
+	bool popped = 0;
 	for (; ;) {
-		linePos.push_back(Vector2f(j, i));
-
+		if (!popped) {
+			pixelBoundaryPos.push_back(Vector2f(j, i));
+			tmpBoundaryPos.push_back(Vector2f(j, i));
+		}
+		popped = 0;
 		used[piece.tex.width*i + j] = 1;
 		UINT rowStart = i * mappedTex.RowPitch;
 		UINT colStart = j * 4;
-		/*pTexels[rowStart + colStart + 0] = 255;
-		pTexels[rowStart + colStart + 1] = 0;
-		pTexels[rowStart + colStart + 2] = 0; 
-		pTexels[rowStart + colStart + 3] = 255;*/
+		
+		if (pixelBoundaryPos.size() > 10 && (i+1==startY && j==startX || i-1==startY && j==startX || i==startY && j+1==startX || i==startY && j-1==startX))// ||
+			//i+1==startY && j+1==startX || i-1==startY && j+1==startX || i+1==startY && j-1==startX || i-1==startY && j-1==startX))
+			break;
 
 		int x=-1,y=-1;
 		if (OnOutsideBoundary(i+1, j, piece.tex) && !used[piece.tex.width*(i+1) + j]) y=i+1,x=j;
 		else if (OnOutsideBoundary(i-1, j, piece.tex) && !used[piece.tex.width*(i-1) + j]) y=i-1,x=j;
 		else if (OnOutsideBoundary(i, j+1, piece.tex) && !used[piece.tex.width*(i) + j+1]) y=i,x=j+1;
 		else if (OnOutsideBoundary(i, j-1, piece.tex) && !used[piece.tex.width*(i) + j-1]) y=i,x=j-1;
-		else if (OnOutsideBoundary(i+1, j+1, piece.tex) && !used[piece.tex.width*(i+1) + j+1]) y=i+1,x=j+1;
+		/*else if (OnOutsideBoundary(i+1, j+1, piece.tex) && !used[piece.tex.width*(i+1) + j+1]) y=i+1,x=j+1;
 		else if (OnOutsideBoundary(i-1, j+1, piece.tex) && !used[piece.tex.width*(i-1) + j+1]) y=i-1,x=j+1;
 		else if (OnOutsideBoundary(i+1, j-1, piece.tex) && !used[piece.tex.width*(i+1) + j-1]) y=i+1,x=j-1;
-		else if (OnOutsideBoundary(i-1, j-1, piece.tex) && !used[piece.tex.width*(i-1) + j-1]) y=i-1,x=j-1;
-		else if (y == startY && x == startX)
-			break;
-		else
-			break;
+		else if (OnOutsideBoundary(i-1, j-1, piece.tex) && !used[piece.tex.width*(i-1) + j-1]) y=i-1,x=j-1;*/
+		else { // back track
+			pixelBoundaryPos.pop_back();
+			y = (int)pixelBoundaryPos.back().y();
+			x = (int)pixelBoundaryPos.back().x();
+			popped=1;
+		}
 
 		i = y;
 		j = x;
 	}
-	int nPoints = linePos.size();
+	int nPoints = pixelBoundaryPos.size();
+
+	/* Correct orientation */
+	{
+		Vector2f & v1 = pixelBoundaryPos[0];
+		Vector2f & v2 = pixelBoundaryPos[nPoints/3];
+		Vector2f & v3 = pixelBoundaryPos[2*nPoints/3];
+		Vector2f e1(v2-v1);
+		Vector2f e2(v3-v1);
+		if (v2.x()*v1.y() - v2.y()*v1.x() < 0) {
+			for (int i=0; i<nPoints/2; i++) {
+				Vector2f t(pixelBoundaryPos[i]);
+				pixelBoundaryPos[i] = pixelBoundaryPos[nPoints-i-1];
+				pixelBoundaryPos[nPoints-i-1] = t;
+
+				/*t = (boundaryPos[i]);
+				boundaryPos[i] = boundaryPos[nPoints-i-1];
+				boundaryPos[nPoints-i-1] = t;*/
+			}
+		}
+	}
 
 	/* Compute curvatures */
-	/*std::vector<float> curvatures;
-	int nPoints = linePos.size();
+	std::vector<float> curvatures;
+	std::vector<float> angles;
 	curvatures.resize(nPoints);
-	const int curvatureSize=4;
-	MatrixXf A(curvatureSize+1, 2);
-	VectorXf b(curvatureSize+1);
-	VectorXf s;
-	for (int i=0, count=0; i<nPoints; i++) {
-		count=0;
+	angles.resize(nPoints);
+	const int curvatureSize=7;
+	Matrix2f M;
+	Vector2f avgPt;
+	MatrixXf curvaturePtsX(2*(curvatureSize+1)-1, 3);
+	VectorXf curvaturePtsY(2*(curvatureSize+1)-1);
+	std::ofstream out("out.txt");
+	int special = 580007;//nPoints-232-1;
+	auto ComputeNormalDirection = [&] (Vector2f oPt, float flip) {
+		avgPt /= curvatureSize+1;
+		M = (M - (curvatureSize+1)*avgPt*avgPt.transpose())/(curvatureSize+1);
+		
+		EigenSolver<Matrix2f> eig(M);
+		Vector2f normalDir;
+		Matrix2f vectors = eig.pseudoEigenvectors();
+		if (eig.eigenvalues()[0].real() > eig.eigenvalues()[1].real())
+			 normalDir = vectors.col(1);
+		else normalDir = vectors.col(0);
+
+		Vector2f v = avgPt - oPt;
+		if (flip*(v.y()*normalDir.x() - v.x()*normalDir.y()) > 0)
+			normalDir = -normalDir;
+
+		return normalDir;
+	};
+	for (int i=0; i<nPoints; i++) {
+		M = Matrix2Xf::Zero(2,2);
+		avgPt = Vector2f::Zero(2);
+		
+		// Compute normal direction
 		for (int j=i-curvatureSize; j<=i; j++) {
 			int index = j < 0 ? nPoints+j : j;
-			A(count, 0) = linePos[index].x();
-			A(count, 1) = 1;
-			b(count) = linePos[index].y();
-			count++;
+			M += pixelBoundaryPos[index] * pixelBoundaryPos[index].transpose();
+			avgPt += pixelBoundaryPos[index];
+			if (i == special)
+				out << pixelBoundaryPos[index].x() << ' ' << pixelBoundaryPos[index].y()  << std::endl;
 		}
-		s = ((A.transpose() * A).ldlt().solve(A.transpose() * b));
-		float m1 = s(0);
-		Vector2f v1(Vector2f(1, m1).normalized());
-		v1 = (linePos[(i+4)%nPoints] - linePos[i]).normalized();
-		//if (v1.dot(linePos[(i+1)%nPoints] - linePos[i]) < 0) v1 = -v1;
+		Vector2f v1 = ComputeNormalDirection(pixelBoundaryPos[i < 0 ? nPoints+i : i], -1);
 
-		count=0;
-		for (int j=i; j<=(i+curvatureSize) % nPoints; j++) {
-			A(count, 0) = linePos[j].x();
-			A(count, 1) = 1;
-			b(count) = linePos[j].y();
-			count++;
+		M = Matrix2Xf::Zero(2,2);
+		avgPt = Vector2f::Zero(2);
+		for (int j=i; j<=(i+curvatureSize); j++) {
+			int index = j%nPoints;
+			M += pixelBoundaryPos[index] * pixelBoundaryPos[index].transpose();
+			avgPt += pixelBoundaryPos[index];
+			if (i == special)
+				out << pixelBoundaryPos[index].x() << ' ' << pixelBoundaryPos[index].y()  << std::endl;
 		}
-		s = ((A.transpose() * A).ldlt().solve(A.transpose() * b));
-		float m2 = s(0);
-		Vector2f v2(Vector2f(1, m2).normalized());
-		v2 = (linePos[(i-4) < 0 ? nPoints-4 : i-4] - linePos[i]).normalized();
-		//if (v2.dot(linePos[(i-1) < 0 ? nPoints-1 : (i-1)] - linePos[i]) < 0) v2 = -v2;
+		Vector2f v2 = ComputeNormalDirection(pixelBoundaryPos[i%nPoints], 1);
+		Vector2f normalDir((v1+v2).normalized());
+		
+		// Compute angle
+		float val = v1.dot(v2);
+		if (val < -1) val = -1;
+		if (val > 1) val = 1;
+		val = acos(val);
+		angles[i] = val;
 
-		curvatures[i] = (v1+v2).norm();
-		UINT rowStart = (int)linePos[i].y() * mappedTex.RowPitch;
-		UINT colStart =  (int)linePos[i].x() * 4;
-		pTexels[rowStart + colStart + 0] = 0;
-		pTexels[rowStart + colStart + 1] = 2*curvatures[i]*126;
-		pTexels[rowStart + colStart + 2] = 0; 
-		pTexels[rowStart + colStart + 3] = 255;
+		// Compute curvature
+		int count = 0;
+		Vector2f center(pixelBoundaryPos[i]);
+		for (int j=i-curvatureSize; j<=i; j++) {
+			int index = j < 0 ? nPoints+j : j;
+			Vector2f l(pixelBoundaryPos[index]-center);
+			float y = normalDir.dot(l);
+			float x = sqrt(abs(l.squaredNorm() - y*y));
+			if (normalDir.x()*l.y() - normalDir.y()*l.x() < 0) x = -x;
+			curvaturePtsX(count, 0) = x*x;
+			curvaturePtsX(count, 1) = x;
+			curvaturePtsX(count, 2) = 1;
+			curvaturePtsY(count++) = y;
+		}
+	
+		for (int j=i+1; j<=(i+curvatureSize); j++) {
+			int index = j%nPoints;
+			Vector2f l(pixelBoundaryPos[index]-center);
+			float y = normalDir.dot(l);
+			float x = sqrt(abs(l.squaredNorm() - y*y));
+			if (normalDir.x()*l.y() - normalDir.y()*l.x() < 0) x = -x;
+			curvaturePtsX(count, 0) = x*x;
+			curvaturePtsX(count, 1) = x;
+			curvaturePtsX(count, 2) = 1;
+			curvaturePtsY(count++) = y;
+		}
+		
+		Vector3f curveInfo = curvaturePtsX.jacobiSvd(ComputeThinU | ComputeThinV).solve(curvaturePtsY);		
+		float curvatureVal = 2*curveInfo.x()/pow(1+curveInfo.y()*curveInfo.y(), 1.5);
 
-	}*/
+		if (i == special) {
+			out << v2 << std::endl << std::endl;
+			out << v1.dot(v2) << std::endl;
+			float flt = v1.dot(v2); 
+			out << val << std::endl;
+			out << abs(.5f*D3DX_PI - val) << std::endl << std::endl;
+		}
 
-	auto findClosestPt = [nPoints,&linePos,&mappedTex,&pTexels] (Vector2f pt) {
+		curvatures[i] = curvatureVal;
+		//out << curvatures[i] << std::endl;
+	} //*/ 
+	
+	/*
+	for (int i=0; i<nPoints; i++) {
+		if (curvatures[i] < 0) {
+			UINT rowStart = (int)pixelBoundaryPos[i].y() * mappedTex.RowPitch;
+			UINT colStart =  (int)pixelBoundaryPos[i].x() * 4;
+			pTexels[rowStart + colStart + 0] = 0;
+			pTexels[rowStart + colStart + 1] = 0;
+			pTexels[rowStart + colStart + 2] = 0; 
+			pTexels[rowStart + colStart + 3] = 255;
+		}
+
+	}
+	pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
+	return;*/
+
+	/* Find the corner points */
+	auto findClosestPt = [nPoints,&pixelBoundaryPos,&mappedTex,&pTexels,&angles] (Vector2f pt) {
 		float bestDistSq = FLT_MAX;
 		int index = 0;
 		for (int i=0; i<nPoints; i++) {
-			float dist = (linePos[i] - pt).squaredNorm();
-			if (dist < bestDistSq) {
+			float dist = (pixelBoundaryPos[i] - pt).squaredNorm();
+			if (dist < bestDistSq && (.5f*D3DX_PI-abs(angles[i])) < .5f) {
 				bestDistSq = dist;
 				index = i;
 			}
 		}
 
-		UINT rowStart = (int)linePos[index].y() * mappedTex.RowPitch;
-		UINT colStart =  (int)linePos[index].x() * 4;
+		UINT rowStart = (int)pixelBoundaryPos[index].y() * mappedTex.RowPitch;
+		UINT colStart =  (int)pixelBoundaryPos[index].x() * 4;
 		pTexels[rowStart + colStart + 0] = 0;
 		pTexels[rowStart + colStart + 1] = 255;
 		pTexels[rowStart + colStart + 2] = 0; 
@@ -315,59 +589,64 @@ void JPuzzle::ProcessPuzzlePiece(ID3D10Device * pDevice)
 	};
     int endPoints[4];
 	endPoints[0] = findClosestPt(Vector2f(0,0));
-    endPoints[1] = findClosestPt(Vector2f(piece.tex.width-1,0));
-    if (endPoints[1] - endPoints[0] < 0) {
-		for (int i=0; i<nPoints/2; i++) {
-			Vector2f t(linePos[i]);
-			linePos[i] = linePos[nPoints-i-1];
-			linePos[nPoints-i-1] = t;
-		}
-	}
-	endPoints[0] = findClosestPt(Vector2f(0,0));
-	endPoints[1] = findClosestPt(Vector2f(piece.tex.width-1,0));
+	endPoints[1] = findClosestPt(Vector2f(0,piece.tex.height-1));
 	endPoints[2] = findClosestPt(Vector2f(piece.tex.width-1,piece.tex.height-1));
-	endPoints[3] = findClosestPt(Vector2f(0,piece.tex.height-1));
+	endPoints[3] = findClosestPt(Vector2f(piece.tex.width-1,0));
 
-	std::vector<Vector2f> curves[4];
+	/* Segmented the boundary */
+	std::vector<BoundaryPoint> * edges = piece.edges;
 	for (int i=0; i<4; i++) {
-		curves[i].reserve(nPoints);
+		edges[i].reserve(nPoints);
 		for (int j=endPoints[i]; j!=endPoints[(i+1)%4]; j=(j+1)%nPoints) {
-			curves[i].push_back(linePos[j]);
+			BoundaryPoint bd;
+			bd.pos = pixelBoundaryPos[j];
+			bd.k = curvatures[j];
+			edges[i].push_back(bd);
 		}
+		piece.endPoints[i] = pixelBoundaryPos[endPoints[i]];
 	}
+
+	/* Compute stats */
 	for (int i=0; i<4; i++) {
-		/*for (int j=0; j<curves[i].size(); j++) {
-			UINT rowStart = (int)curves[i][j].y() * mappedTex.RowPitch;
-			UINT colStart =  (int)curves[i][j].x() * 4;
+		Vector3f edgeVec(piece.endPoints[(i+1)%4].x() - piece.endPoints[i].x(), piece.endPoints[(i+1)%4].y() - piece.endPoints[i].y(), 0);
+		Vector3f up(0, 0, 1);
+		Vector3f edgeNor(up.cross(edgeVec));
+		piece.edgeNor[i] = Vector2f(edgeNor.x(), edgeNor.y()).normalized();
+
+		int nZeros = 0;
+		Vector2f previousPt(edges[i][0].pos);
+		piece.totalCurvature[i] = 0;
+		piece.totalLength[i] = 0;
+		for (int j=0; j<edges[i].size(); j++) {
+			piece.totalCurvature[i] += abs(edges[i][j].k);
+			if (abs(edges[i][j].k) < .01) nZeros++;
+			piece.totalLength[i] += (previousPt - edges[i][j].pos).norm();
+			previousPt = edges[i][j].pos;
+
+			UINT rowStart = (int)(edges[i][j].pos.y()+4*piece.edgeNor[i].y()) * mappedTex.RowPitch;
+			UINT colStart =  (int)(edges[i][j].pos.x()+4*piece.edgeNor[i].x()) * 4;
 			pTexels[rowStart + colStart + 0] = i == 0 ? 255 : 0;
 			pTexels[rowStart + colStart + 1] = i == 1 ? 255 : 0;
 			pTexels[rowStart + colStart + 2] = i == 2 ? 255 : 0; 
 			pTexels[rowStart + colStart + 3] = 255;
-		}*/
-		piece.endPoints[i] = linePos[endPoints[i]];
-
-		float bestDist = 0;
-		Vector2f dir = (linePos[endPoints[(i+1)%4]] - linePos[endPoints[i]]).normalized();
-		for (int j=0; j<curves[i].size(); j++) {
-			Vector2f dir2(curves[i][j] - linePos[endPoints[i]]);
-			float a = dir.dot(dir2);
-			float c2 = dir2.squaredNorm();
-			float b2 = c2-a*a;
-			if (b2 > bestDist) {
-				bestDist = b2;
-				piece.maxPoint[i] = curves[i][j];
-			}
+		}
+		if ((float)nZeros/edges[i].size() > .75) {
+			piece.edgeCovered[i] = 1;
+			piece.isBorderPiece = 1;
 		}
 	}
 
-	/*for (int i=0; i<4; i++) {
-			UINT rowStart = (int)piece.maxPoint[i].y() * mappedTex.RowPitch;
-			UINT colStart =  (int)piece.maxPoint[i].x() * 4;
-			pTexels[rowStart + colStart + 0] = 255;
-			pTexels[rowStart + colStart + 1] = 255;
-			pTexels[rowStart + colStart + 2] = 255; 
-			pTexels[rowStart + colStart + 3] = 255;
-	}*/
+	/* Sort the curvatures 
+	struct SortData {
+		float k;
+		int index;
+	};
+	std::vector<SortData> data(nPoints);
+	for (int i=0; i<nPoints; i++) {data[i].k = abs(curvatures[i]); data[i].index = i; }
+	qsort(data.data(), data.size(), sizeof(SortData), CompareCurvature);
+	for (int i=0; i<10; i++)
+		out << data[i].k << std::endl; */
+
 
 	pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
 
@@ -378,49 +657,206 @@ void JPuzzle::ProcessPuzzlePiece(ID3D10Device * pDevice)
 		stream << curves[1][i].y();
 		stream << '\n';
 	}*/
+}
 
+void JPuzzle::AddPiece()
+{
+	if (m_nPiecesAdded+1 <= m_nPuzzlePieces) {
+		m_nPiecesAdded++;
+		ComparePieces();
+		Sleep(150);
+	}
+}
+
+int CompareEdgeMeasures(const void * a, const void * b) 
+{
+	if (*(float*)a <  *(float*)b) return (int)-1;
+	if (*(float*)a == *(float*)b) return (int)0;
+	if (*(float*)a >  *(float*)b) return (int)1;
 }
 
 void JPuzzle::ComparePieces()
 {
-	for (int i=0; i<1; i++) {
-		PuzzlePiece & p1 = m_PuzzlePieces[i];
-		PuzzlePiece & p2 = m_PuzzlePieces[i+1];
-		for (int j=0; j<4; j++) {
+	struct Data {
+		float measure;
+		PuzzlePiece * a;
+		PuzzlePiece * b;
+		int j;
+		int k;
+		int l;
+	};
+
+	/* Compute the measures */
+	int nMeasures = 0;
+	Data * measures = new Data[m_AddedPuzzlePieces.size()*m_NotAddedPuzzlePieces.size()*4*4]; 
+	for (int i=0; i<m_AddedPuzzlePieces.size(); i++) {
+		for (int j=0; j<m_NotAddedPuzzlePieces.size(); j++) {
 			for (int k=0; k<4; k++) {
-				p1.endPoints[0];
+				for (int l=0; l<4; l++) {
+					if (!m_AddedPuzzlePieces[i]->edgeCovered[k] && !m_NotAddedPuzzlePieces[j]->edgeCovered[l]) {
+						measures[nMeasures].measure = CompareEdgesByShape(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
+						measures[nMeasures].a = m_AddedPuzzlePieces[i];
+						measures[nMeasures].b = m_NotAddedPuzzlePieces[j];
+						measures[nMeasures].j = j;
+						measures[nMeasures].k = k;
+						measures[nMeasures++].l = l;
+					}
+				}
 			}
 		}
 	}
+
+	qsort(measures, nMeasures, sizeof(Data), CompareEdgeMeasures);
+
+	/* Align the pieces */
+	Data & best = measures[0];
+	PuzzlePiece & a = *best.a;
+	PuzzlePiece & b = *best.b;
+	Vector4f eA0(2.f*(a.endPoints[best.k].x()/			g_TextureSize)-1, -2.f*(a.endPoints[best.k].y()/		g_TextureSize)+1, 1, 1); eA0 = a.transform*eA0;
+	Vector4f eA1(2.f*(a.endPoints[(best.k+1)%4].x()/	g_TextureSize)-1, -2.f*(a.endPoints[(best.k+1)%4].y()/	g_TextureSize)+1, 1, 1); eA1 = a.transform*eA1;
+	Vector4f eB0(2.f*(b.endPoints[best.l].x()/			g_TextureSize)-1, -2.f*(b.endPoints[best.l].y()/		g_TextureSize)+1, 1, 1); eB0 = b.transform*eB0;
+	Vector4f eB1(2.f*(b.endPoints[(best.l+1)%4].x()/	g_TextureSize)-1, -2.f*(b.endPoints[(best.l+1)%4].y()/	g_TextureSize)+1, 1, 1); eB1 = b.transform*eB1;
+
+	Vector2f vA(eA1.x()-eA0.x(), eA1.y()-eA0.y()); vA.normalize();
+	Vector2f vB(eB0.x()-eB1.x(), eB0.y()-eB1.y()); vB.normalize();
+
+	// Compute b's transform
+	float cr = vB.x()*vA.y() - vB.y()*vA.x();
+	float dot = vB.dot(vA);
+	if (dot < -1) dot = -1;
+	if (dot > 1) dot = 1;
+	float theta = acos(dot);
+	if (cr < 0) theta = -theta;
+	Matrix3f rot; rot = AngleAxisf(theta, Vector3f::UnitZ()); 
+	Vector3f rotatedaasdf = rot*Vector3f(vB[0],vB[1],0);
+	
+	Matrix4f R = Matrix4f::Identity();
+	for (int i=0; i<3; i++)
+		for (int j=0; j<3; j++)
+			R(i,j) = rot(i,j);
+	Matrix4f T1 = Matrix4f::Identity(); 
+	T1(0,3) = -.5f*(eB0.x()+eB1.x());
+	T1(1,3) = -.5f*(eB0.y()+eB1.y());
+	Matrix4f T2 = Matrix4f::Identity(); 
+	T2(0,3) = .5f*(eA0.x()+eA1.x());
+	T2(1,3) = .5f*(eA0.y()+eA1.y());
+
+	b.transform = T2*R*T1;
+
+	Vector4f asdf = T2*R*T1*Vector4f(eB0.x(), eB0.y(), 0, 1);
+	Vector4f asdf2 = T2*R*T1*Vector4f(eB1.x(), eB1.y(), 0, 1);
+	Vector4f dif = asdf2-asdf;
+
+	// Update puzzle info
+	m_AddedPuzzlePieces.push_back(&b);
+	m_NotAddedPuzzlePieces.erase(m_NotAddedPuzzlePieces.begin()+best.j);
+	a.edgeCovered[best.k] = 1;
+	b.edgeCovered[best.l] = 1;
+
+	delete[] measures;
+}
+
+float JPuzzle::CompareEdgesByShape(PuzzlePiece & a, PuzzlePiece & b, int k, int l)
+{
+	//return abs(a.totalLength[k] - b.totalLength[l]);
+	float asdf= abs((a.endPoints[k]-a.endPoints[(k+1)%4]).norm() - (b.endPoints[l]-b.endPoints[(l+1)%4]).norm());
+
+	std::vector<BoundaryPoint> * longEdge;
+	std::vector<BoundaryPoint> * shortEdge;
+	Vector2f longEdgeNor;
+	Vector2f shortEdgeNor;
+	Vector2f longEdgePoint;
+	Vector2f shortEdgePoint;
+
+	if (a.edges[k].size() > b.edges[l].size()) {
+		longEdge = &a.edges[k], shortEdge = &b.edges[l];
+		longEdgeNor = a.edgeNor[k], shortEdgeNor = b.edgeNor[l];
+		longEdgePoint = a.endPoints[k], shortEdgePoint = b.endPoints[l];
+	} else {
+		shortEdge = &a.edges[k], longEdge = &b.edges[l];
+		shortEdgeNor = a.edgeNor[k], longEdgeNor = b.edgeNor[l];
+		shortEdgePoint = a.endPoints[k], longEdgePoint = b.endPoints[l];
+	}
+
+	auto Project = [] (Vector2f & normal, Vector2f & pointOnLine, Vector2f & pt) {
+		Vector2f l(pt-pointOnLine);
+		float y = normal.dot(l);
+		if (normal.x()*l.y() - normal.y()*l.x() < 0) y = -y;
+		return y;
+	};
+	
+	auto Compare = [&] (int offset) {
+		float sum=0;
+		int longEdgeSize = longEdge->size();
+		for (int i=0, end=shortEdge->size(); i<end; i++) {
+			Vector2f p1 = (*shortEdge)[end-i-1].pos;
+			Vector2f p2 = (*longEdge)[longEdgeSize-i-1].pos;
+			float hs = Project(shortEdgeNor, shortEdgePoint, (*shortEdge)[end-i-1].pos);
+			float hl = -Project(longEdgeNor, longEdgePoint, (*longEdge)[offset+i].pos);
+			sum += abs(hs-hl);
+		}
+		return sum;
+	};
+
+	int offset = (longEdge->size()-shortEdge->size())/2;
+	float measure = Compare(offset);
+
+	return measure+asdf;
 }
 
 void JPuzzle::Render(ID3D10Device * pDevice)
 {
-	m_World(0,0) = .5;
-	m_World(1,1) = .5;
-    m_pWorldfx->SetMatrix((float*)&m_World.transpose());
- 
-	static bool last = 0;
-	if (GetAsyncKeyState(VK_SHIFT)) {
-		last = !last;
-		Sleep(300);
-	}
-	m_pSRVPuzzleTextureFx->SetResource(m_rgSRVPuzzleTexture[(int)last]);
+	if (GetAsyncKeyState(VK_RETURN))
+		AddPiece();
 
-	D3D10_TECHNIQUE_DESC techDesc;
-    m_pTechnique->GetDesc( &techDesc );
-    for( UINT p = 0; p < techDesc.Passes; ++p ) {
-        m_pTechnique->GetPassByIndex(p)->Apply( 0 );
-        pDevice->DrawIndexed(6, 0, 0);
-    }
+	m_World = Matrix4f::Identity();
+	static float scale = 1.;
+	static Vector2f trans;
+	const float scaleAmount = .001;
+	const float transAmount = .001/scale;
+	if (GetAsyncKeyState(VK_LBUTTON)) {
+		scale += scaleAmount;
+	} else if (GetAsyncKeyState(VK_RBUTTON)) {
+		scale -= scaleAmount;
+	} else if (GetAsyncKeyState(VK_UP)) {
+		trans.y() -= transAmount;
+	} else if (GetAsyncKeyState(VK_DOWN)) {
+		trans.y() += transAmount;
+	} else if (GetAsyncKeyState(VK_LEFT)) {
+		trans.x() += transAmount;
+	} else if (GetAsyncKeyState(VK_RIGHT)) {
+		trans.x() -= transAmount;
+	}
+	if (scale < .1) scale = .1;
+	m_World(0,0) = scale;
+	m_World(1,1) = scale;
+	m_World(0, 3) = scale*trans.x();
+	m_World(1, 3) = scale*trans.y();
+ 
+	for (int i=0; i<m_nPiecesAdded; i++) {
+		m_pSRVPuzzleTextureFx->SetResource(m_AddedPuzzlePieces[i]->SRVPuzzleTexture);
+		Matrix4f T = m_World*m_AddedPuzzlePieces[i]->transform;
+		m_pWorldfx->SetMatrix(T.data());
+
+		D3D10_TECHNIQUE_DESC techDesc;
+		m_pTechnique->GetDesc( &techDesc );
+		for( UINT p = 0; p < techDesc.Passes; ++p ) {
+			m_pTechnique->GetPassByIndex(p)->Apply( 0 );
+			pDevice->DrawIndexed(6, 0, 0);
+		}
+	}
 }
 
 void JPuzzle::Destroy()
 {
+	delete[] m_PuzzlePieces;
+	m_PuzzlePieces = NULL;
+	m_nPuzzlePieces = 0;
+
 	if(m_pVBQuad) m_pVBQuad->Release();
     if(m_pIBQuad) m_pIBQuad->Release();
     if(m_pVertexLayout) m_pVertexLayout->Release();
-	for (int i=0, end=m_rgSRVPuzzleTexture.size(); i<end; i++)
-		if (m_rgSRVPuzzleTexture[i]) m_rgSRVPuzzleTexture[i]->Release();
+	//for (int i=0; i<m_nPuzzlePieces; i++)
+	//	if (m_rgSRVPuzzleTexture[i]) m_rgSRVPuzzleTexture[i]->Release();
     if(m_pEffect) m_pEffect->Release();
 }
