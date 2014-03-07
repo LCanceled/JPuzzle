@@ -186,9 +186,11 @@ bool JPuzzle::ExtractPiece(Texture & tex, Texture & tmpTex, std::vector<Vector2f
 		int ii=pair.first, jj=pair.second;
 		if (tex(ii, jj).w() == 0) continue;
 
-		tmpTex(ii,jj) = tex(ii,jj);
+		if (tex(ii, jj).w() > 200) {
+			tmpTex(ii,jj) = tex(ii,jj);
+			piecePixels[nPiecePixels++] = Vector2f(jj,ii);
+		}
 		tex(ii,jj).w() = 0;
-		piecePixels[nPiecePixels++] = Vector2f(jj,ii);
 
 		if (tex(ii+1, jj).w() > 0) {q.push(std::pair<int,int>(ii+1,jj)); }
 		if (tex(ii-1, jj).w() > 0) {q.push(std::pair<int,int>(ii-1,jj)); }
@@ -256,7 +258,7 @@ bool JPuzzle::ExtractPiece(Texture & tex, Texture & tmpTex, std::vector<Vector2f
 	return 1;
 }
 
-HRESULT JPuzzle::Init(char * file, ID3D10Device * pDevice)
+HRESULT JPuzzle::Init(char * file, int nToLoad, ID3D10Device * pDevice)
 {
 	HRESULT hr = CreateGraphics(pDevice);
 	if (hr != S_OK) return hr;
@@ -330,9 +332,13 @@ HRESULT JPuzzle::Init(char * file, ID3D10Device * pDevice)
 		piece.transform = Matrix4f::Identity();
 		m_PuzzlePieces[m_nPuzzlePieces++] = piece;
 
-		ProcessPuzzlePiece(pDevice);
-			
-		//if (i>=8) break;
+		Texture tmpTex(piece.tex);
+		//for (int k=0; i<m_MaxEdgeInsets; k++)
+			ProcessPuzzlePiece(tmpTex, 0, pDevice);
+			//ProcessPuzzlePiece(tmpTex, 1, pDevice);
+			//ProcessPuzzlePiece(tmpTex, 2, pDevice);
+
+		if (i>=nToLoad-1) break;
 	}
 	m_nPiecesAdded = 1;
 	m_AddedPuzzlePieces.push_back(&m_PuzzlePieces[0]);
@@ -360,6 +366,23 @@ bool JPuzzle::OnOutsideBoundary(int i, int j, Texture & tex)
 	//return tex(i-1,j).w() > 0 || tex(i+1,j).w() > 0 || tex(i,j-1).w() > 0 || tex(i,j+1).w() > 0;
 }
 
+bool JPuzzle::OnBoundary(int i, int j, Texture & tex)
+{
+	if (tex(i, j).w() == 0)
+		return 0;
+
+	int k=-1+i;
+	for (; k<=i+1; k++) {
+		int l=-1+j;
+		for (; l<=j+1; l++) {
+			if (tex(k, l).w() == 0) 
+				return 1;
+		}
+	}
+	return 0;
+	//return tex(i-1,j).w() > 0 || tex(i+1,j).w() > 0 || tex(i,j-1).w() > 0 || tex(i,j+1).w() > 0;
+}
+
 int CompareCurvature(const void * a, const void * b) 
 {
 	if ( *(float*)a <  *(float*)b ) return (int)-1;
@@ -367,21 +390,21 @@ int CompareCurvature(const void * a, const void * b)
 	if ( *(float*)a >  *(float*)b ) return (int)1;
 }
 
-void JPuzzle::ProcessPuzzlePiece(ID3D10Device * pDevice)
+void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device * pDevice)
 {
 	PuzzlePiece & piece = m_PuzzlePieces[m_nPuzzlePieces-1];
 
 	/* Find pixels on boundary */
-	int i=piece.tex.height/2, j=0;
-	for (; j<piece.tex.width; j++) {
-		if (piece.tex(i, j).w() > 0) break;
+	int i=tex.height/2, j=0;
+	for (; j<tex.width; j++) {
+		if (tex(i, j).w() > 0) break;
 	}
-	j -= 1;
+	//j -= 1;
 	int startX = j;
 	int startY = i;
 
-	bool * used = new bool[piece.tex.width*piece.tex.height];
-	memset(used, 0, sizeof(bool)*piece.tex.width*piece.tex.height);
+	bool * used = new bool[tex.width*tex.height];
+	memset(used, 0, sizeof(bool)*tex.width*tex.height);
 
 	D3D10_MAPPED_TEXTURE2D mappedTex;
 	ID3D10Texture2D * pTexture;
@@ -398,7 +421,7 @@ void JPuzzle::ProcessPuzzlePiece(ID3D10Device * pDevice)
 			tmpBoundaryPos.push_back(Vector2f(j, i));
 		}
 		popped = 0;
-		used[piece.tex.width*i + j] = 1;
+		used[tex.width*i + j] = 1;
 		UINT rowStart = i * mappedTex.RowPitch;
 		UINT colStart = j * 4;
 		
@@ -407,14 +430,19 @@ void JPuzzle::ProcessPuzzlePiece(ID3D10Device * pDevice)
 			break;
 
 		int x=-1,y=-1;
-		if (OnOutsideBoundary(i+1, j, piece.tex) && !used[piece.tex.width*(i+1) + j]) y=i+1,x=j;
-		else if (OnOutsideBoundary(i-1, j, piece.tex) && !used[piece.tex.width*(i-1) + j]) y=i-1,x=j;
-		else if (OnOutsideBoundary(i, j+1, piece.tex) && !used[piece.tex.width*(i) + j+1]) y=i,x=j+1;
-		else if (OnOutsideBoundary(i, j-1, piece.tex) && !used[piece.tex.width*(i) + j-1]) y=i,x=j-1;
-		/*else if (OnOutsideBoundary(i+1, j+1, piece.tex) && !used[piece.tex.width*(i+1) + j+1]) y=i+1,x=j+1;
-		else if (OnOutsideBoundary(i-1, j+1, piece.tex) && !used[piece.tex.width*(i-1) + j+1]) y=i-1,x=j+1;
-		else if (OnOutsideBoundary(i+1, j-1, piece.tex) && !used[piece.tex.width*(i+1) + j-1]) y=i+1,x=j-1;
-		else if (OnOutsideBoundary(i-1, j-1, piece.tex) && !used[piece.tex.width*(i-1) + j-1]) y=i-1,x=j-1;*/
+		if (OnBoundary(i+1, j, tex) && !used[tex.width*(i+1) + j]) y=i+1,x=j;
+		else if (OnBoundary(i-1, j, tex) && !used[tex.width*(i-1) + j]) y=i-1,x=j;
+		else if (OnBoundary(i, j+1, tex) && !used[tex.width*(i) + j+1]) y=i,x=j+1;
+		else if (OnBoundary(i, j-1, tex) && !used[tex.width*(i) + j-1]) y=i,x=j-1;
+		/*
+		if (OnOutsideBoundary(i+1, j, tex) && !used[tex.width*(i+1) + j]) y=i+1,x=j;
+		else if (OnOutsideBoundary(i-1, j, tex) && !used[tex.width*(i-1) + j]) y=i-1,x=j;
+		else if (OnOutsideBoundary(i, j+1, tex) && !used[tex.width*(i) + j+1]) y=i,x=j+1;
+		else if (OnOutsideBoundary(i, j-1, tex) && !used[tex.width*(i) + j-1]) y=i,x=j-1;
+		else if (OnOutsideBoundary(i+1, j+1, tex) && !used[tex.width*(i+1) + j+1]) y=i+1,x=j+1;
+		else if (OnOutsideBoundary(i-1, j+1, tex) && !used[tex.width*(i-1) + j+1]) y=i-1,x=j+1;
+		else if (OnOutsideBoundary(i+1, j-1, tex) && !used[tex.width*(i+1) + j-1]) y=i+1,x=j-1;
+		else if (OnOutsideBoundary(i-1, j-1, tex) && !used[tex.width*(i-1) + j-1]) y=i-1,x=j-1;*/
 		else { // back track
 			pixelBoundaryPos.pop_back();
 			y = (int)pixelBoundaryPos.back().y();
@@ -425,7 +453,23 @@ void JPuzzle::ProcessPuzzlePiece(ID3D10Device * pDevice)
 		i = y;
 		j = x;
 	}
+	delete[] used;
 	int nPoints = pixelBoundaryPos.size();
+
+	/*for (int i=0; i<nPoints; i++) {
+		//if (curvatures[i] < 0) {
+			UINT rowStart = (int)pixelBoundaryPos[i].y() * mappedTex.RowPitch;
+			UINT colStart =  (int)pixelBoundaryPos[i].x() * 4;
+			pTexels[rowStart + colStart + 0] = 0;
+			pTexels[rowStart + colStart + 1] = 0;
+			pTexels[rowStart + colStart + 2] = 255; 
+			pTexels[rowStart + colStart + 3] = 255;
+		//}
+
+	}
+	pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
+	return;
+	*/
 
 	/* Correct orientation */
 	{
@@ -434,7 +478,8 @@ void JPuzzle::ProcessPuzzlePiece(ID3D10Device * pDevice)
 		Vector2f & v3 = pixelBoundaryPos[2*nPoints/3];
 		Vector2f e1(v2-v1);
 		Vector2f e2(v3-v1);
-		if (v2.x()*v1.y() - v2.y()*v1.x() < 0) {
+		
+		if (e2.x()*e1.y() - e2.y()*e1.x() < 0) {
 			for (int i=0; i<nPoints/2; i++) {
 				Vector2f t(pixelBoundaryPos[i]);
 				pixelBoundaryPos[i] = pixelBoundaryPos[nPoints-i-1];
@@ -450,136 +495,142 @@ void JPuzzle::ProcessPuzzlePiece(ID3D10Device * pDevice)
 	/* Compute curvatures */
 	std::vector<float> curvatures;
 	std::vector<float> angles;
-	curvatures.resize(nPoints);
-	angles.resize(nPoints);
-	const int curvatureSize=7;
-	Matrix2f M;
-	Vector2f avgPt;
-	MatrixXf curvaturePtsX(2*(curvatureSize+1)-1, 3);
-	VectorXf curvaturePtsY(2*(curvatureSize+1)-1);
-	std::ofstream out("out.txt");
-	int special = 580007;//nPoints-232-1;
-	auto ComputeNormalDirection = [&] (Vector2f oPt, float flip) {
-		avgPt /= curvatureSize+1;
-		M = (M - (curvatureSize+1)*avgPt*avgPt.transpose())/(curvatureSize+1);
+	if (edgeInsetLevel == 0) {
+		curvatures.resize(nPoints);
+		angles.resize(nPoints);
+		const int curvatureSize=7;
+		Matrix2f M;
+		Vector2f avgPt;
+		MatrixXf curvaturePtsX(2*(curvatureSize+1)-1, 3);
+		VectorXf curvaturePtsY(2*(curvatureSize+1)-1);
+		std::ofstream out("out.txt");
+		int special = 580007;//nPoints-232-1;
+		auto ComputeNormalDirection = [&] (Vector2f oPt, float flip) {
+			avgPt /= curvatureSize+1;
+			M = (M - (curvatureSize+1)*avgPt*avgPt.transpose())/(curvatureSize+1);
 		
-		EigenSolver<Matrix2f> eig(M);
-		Vector2f normalDir;
-		Matrix2f vectors = eig.pseudoEigenvectors();
-		if (eig.eigenvalues()[0].real() > eig.eigenvalues()[1].real())
-			 normalDir = vectors.col(1);
-		else normalDir = vectors.col(0);
+			EigenSolver<Matrix2f> eig(M);
+			Vector2f normalDir;
+			Matrix2f vectors = eig.pseudoEigenvectors();
+			if (eig.eigenvalues()[0].real() > eig.eigenvalues()[1].real())
+				 normalDir = vectors.col(1);
+			else normalDir = vectors.col(0);
 
-		Vector2f v = avgPt - oPt;
-		if (flip*(v.y()*normalDir.x() - v.x()*normalDir.y()) > 0)
-			normalDir = -normalDir;
+			Vector2f v = avgPt - oPt;
+			if (flip*(v.y()*normalDir.x() - v.x()*normalDir.y()) > 0)
+				normalDir = -normalDir;
 
-		return normalDir;
-	};
-	for (int i=0; i<nPoints; i++) {
-		M = Matrix2Xf::Zero(2,2);
-		avgPt = Vector2f::Zero(2);
+			return normalDir;
+		};
+		for (int i=0; i<nPoints; i++) {
+			M = Matrix2Xf::Zero(2,2);
+			avgPt = Vector2f::Zero(2);
 		
-		// Compute normal direction
-		for (int j=i-curvatureSize; j<=i; j++) {
-			int index = j < 0 ? nPoints+j : j;
-			M += pixelBoundaryPos[index] * pixelBoundaryPos[index].transpose();
-			avgPt += pixelBoundaryPos[index];
-			if (i == special)
-				out << pixelBoundaryPos[index].x() << ' ' << pixelBoundaryPos[index].y()  << std::endl;
-		}
-		Vector2f v1 = ComputeNormalDirection(pixelBoundaryPos[i < 0 ? nPoints+i : i], -1);
+			// Compute normal direction
+			for (int j=i-curvatureSize; j<=i; j++) {
+				int index = j < 0 ? nPoints+j : j;
+				M += pixelBoundaryPos[index] * pixelBoundaryPos[index].transpose();
+				avgPt += pixelBoundaryPos[index];
+				//if (i == special)
+				//	out << pixelBoundaryPos[index].x() << ' ' << pixelBoundaryPos[index].y()  << std::endl;
+			}
+			Vector2f v1 = ComputeNormalDirection(pixelBoundaryPos[i < 0 ? nPoints+i : i], -1);
 
-		M = Matrix2Xf::Zero(2,2);
-		avgPt = Vector2f::Zero(2);
-		for (int j=i; j<=(i+curvatureSize); j++) {
-			int index = j%nPoints;
-			M += pixelBoundaryPos[index] * pixelBoundaryPos[index].transpose();
-			avgPt += pixelBoundaryPos[index];
-			if (i == special)
-				out << pixelBoundaryPos[index].x() << ' ' << pixelBoundaryPos[index].y()  << std::endl;
-		}
-		Vector2f v2 = ComputeNormalDirection(pixelBoundaryPos[i%nPoints], 1);
-		Vector2f normalDir((v1+v2).normalized());
+			M = Matrix2Xf::Zero(2,2);
+			avgPt = Vector2f::Zero(2);
+			for (int j=i; j<=(i+curvatureSize); j++) {
+				int index = j%nPoints;
+				M += pixelBoundaryPos[index] * pixelBoundaryPos[index].transpose();
+				avgPt += pixelBoundaryPos[index];
+				//if (i == special)
+				//	out << pixelBoundaryPos[index].x() << ' ' << pixelBoundaryPos[index].y()  << std::endl;
+			}
+			Vector2f v2 = ComputeNormalDirection(pixelBoundaryPos[i%nPoints], 1);
+			Vector2f normalDir((v1+v2).normalized());
 		
-		// Compute angle
-		float val = v1.dot(v2);
-		if (val < -1) val = -1;
-		if (val > 1) val = 1;
-		val = acos(val);
-		angles[i] = val;
+			// Compute angle
+			float val = v1.dot(v2);
+			if (val < -1) val = -1;
+			if (val > 1) val = 1;
+			val = acos(val);
+			angles[i] = val;
 
-		// Compute curvature
-		int count = 0;
-		Vector2f center(pixelBoundaryPos[i]);
-		for (int j=i-curvatureSize; j<=i; j++) {
-			int index = j < 0 ? nPoints+j : j;
-			Vector2f l(pixelBoundaryPos[index]-center);
-			float y = normalDir.dot(l);
-			float x = sqrt(abs(l.squaredNorm() - y*y));
-			if (normalDir.x()*l.y() - normalDir.y()*l.x() < 0) x = -x;
-			curvaturePtsX(count, 0) = x*x;
-			curvaturePtsX(count, 1) = x;
-			curvaturePtsX(count, 2) = 1;
-			curvaturePtsY(count++) = y;
-		}
+			// Compute curvature
+			int count = 0;
+			Vector2f center(pixelBoundaryPos[i]);
+			for (int j=i-curvatureSize; j<=i; j++) {
+				int index = j < 0 ? nPoints+j : j;
+				Vector2f l(pixelBoundaryPos[index]-center);
+				float y = normalDir.dot(l);
+				float x = sqrt(abs(l.squaredNorm() - y*y));
+				if (normalDir.x()*l.y() - normalDir.y()*l.x() < 0) x = -x;
+				curvaturePtsX(count, 0) = x*x;
+				curvaturePtsX(count, 1) = x;
+				curvaturePtsX(count, 2) = 1;
+				curvaturePtsY(count++) = y;
+			}
 	
-		for (int j=i+1; j<=(i+curvatureSize); j++) {
-			int index = j%nPoints;
-			Vector2f l(pixelBoundaryPos[index]-center);
-			float y = normalDir.dot(l);
-			float x = sqrt(abs(l.squaredNorm() - y*y));
-			if (normalDir.x()*l.y() - normalDir.y()*l.x() < 0) x = -x;
-			curvaturePtsX(count, 0) = x*x;
-			curvaturePtsX(count, 1) = x;
-			curvaturePtsX(count, 2) = 1;
-			curvaturePtsY(count++) = y;
-		}
+			for (int j=i+1; j<=(i+curvatureSize); j++) {
+				int index = j%nPoints;
+				Vector2f l(pixelBoundaryPos[index]-center);
+				float y = normalDir.dot(l);
+				float x = sqrt(abs(l.squaredNorm() - y*y));
+				if (normalDir.x()*l.y() - normalDir.y()*l.x() < 0) x = -x;
+				curvaturePtsX(count, 0) = x*x;
+				curvaturePtsX(count, 1) = x;
+				curvaturePtsX(count, 2) = 1;
+				curvaturePtsY(count++) = y;
+			}
 		
-		Vector3f curveInfo = curvaturePtsX.jacobiSvd(ComputeThinU | ComputeThinV).solve(curvaturePtsY);		
-		float curvatureVal = 2*curveInfo.x()/pow(1+curveInfo.y()*curveInfo.y(), 1.5);
+			Vector3f curveInfo = curvaturePtsX.jacobiSvd(ComputeThinU | ComputeThinV).solve(curvaturePtsY);		
+			float curvatureVal = 2*curveInfo.x()/pow(1+curveInfo.y()*curveInfo.y(), 1.5);
 
-		if (i == special) {
-			out << v2 << std::endl << std::endl;
-			out << v1.dot(v2) << std::endl;
-			float flt = v1.dot(v2); 
-			out << val << std::endl;
-			out << abs(.5f*D3DX_PI - val) << std::endl << std::endl;
-		}
+			if (i == special) {
+				//out << v2 << std::endl << std::endl;
+				//out << v1.dot(v2) << std::endl;
+				float flt = v1.dot(v2); 
+				//out << val << std::endl;
+				//out << abs(.5f*D3DX_PI - val) << std::endl << std::endl;
+			}
 
-		curvatures[i] = curvatureVal;
-		//out << curvatures[i] << std::endl;
-	} //*/ 
+			curvatures[i] = curvatureVal;
+			//out << curvatures[i] << std::endl;
+		} //*/ 
 	
-	/*
-	for (int i=0; i<nPoints; i++) {
-		if (curvatures[i] < 0) {
-			UINT rowStart = (int)pixelBoundaryPos[i].y() * mappedTex.RowPitch;
-			UINT colStart =  (int)pixelBoundaryPos[i].x() * 4;
-			pTexels[rowStart + colStart + 0] = 0;
-			pTexels[rowStart + colStart + 1] = 0;
-			pTexels[rowStart + colStart + 2] = 0; 
-			pTexels[rowStart + colStart + 3] = 255;
-		}
+		/*
+		for (int i=0; i<nPoints; i++) {
+			if (curvatures[i] < 0) {
+				UINT rowStart = (int)pixelBoundaryPos[i].y() * mappedTex.RowPitch;
+				UINT colStart =  (int)pixelBoundaryPos[i].x() * 4;
+				pTexels[rowStart + colStart + 0] = 0;
+				pTexels[rowStart + colStart + 1] = 0;
+				pTexels[rowStart + colStart + 2] = 0; 
+				pTexels[rowStart + colStart + 3] = 255;
+			}
 
+		}
+		pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
+		return;*/
 	}
-	pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
-	return;*/
 
 	/* Find the corner points */
-	auto findClosestPt = [nPoints,&pixelBoundaryPos,&mappedTex,&pTexels,&angles] (Vector2f pt) {
+	auto findClosestPt = [edgeInsetLevel, nPoints,&pixelBoundaryPos,&mappedTex,&pTexels,&angles] (Vector2f & pt, Vector2f & offset) {
 		float bestDistSq = FLT_MAX;
 		int index = 0;
 		for (int i=0; i<nPoints; i++) {
 			float dist = (pixelBoundaryPos[i] - pt).squaredNorm();
-			if (dist < bestDistSq && (.5f*D3DX_PI-abs(angles[i])) < .5f) {
+			bool b = 1;
+			if (edgeInsetLevel == 0) b = (.5f*D3DX_PI-abs(angles[i])) < .5f;
+			if (dist < bestDistSq && b) {
 				bestDistSq = dist;
 				index = i;
 			}
 		}
 
-		UINT rowStart = (int)pixelBoundaryPos[index].y() * mappedTex.RowPitch;
-		UINT colStart =  (int)pixelBoundaryPos[index].x() * 4;
+		//UINT rowStart = (int)(pixelBoundaryPos[index].y()+offset.y()) * mappedTex.RowPitch;
+		//UINT colStart =  (int)(pixelBoundaryPos[index].x()+offset.x()) * 4;
+		UINT rowStart = (int)(pixelBoundaryPos[index].y()) * mappedTex.RowPitch;
+		UINT colStart =  (int)(pixelBoundaryPos[index].x()) * 4;
 		pTexels[rowStart + colStart + 0] = 0;
 		pTexels[rowStart + colStart + 1] = 255;
 		pTexels[rowStart + colStart + 2] = 0; 
@@ -588,52 +639,131 @@ void JPuzzle::ProcessPuzzlePiece(ID3D10Device * pDevice)
 		return index;
 	};
     int endPoints[4];
-	endPoints[0] = findClosestPt(Vector2f(0,0));
-	endPoints[1] = findClosestPt(Vector2f(0,piece.tex.height-1));
-	endPoints[2] = findClosestPt(Vector2f(piece.tex.width-1,piece.tex.height-1));
-	endPoints[3] = findClosestPt(Vector2f(piece.tex.width-1,0));
+	endPoints[0] = findClosestPt(Vector2f(0,0), Vector2f(1,1));
+	endPoints[1] = findClosestPt(Vector2f(0,tex.height-1), Vector2f(1,-1));
+	endPoints[2] = findClosestPt(Vector2f(tex.width-1,tex.height-1), Vector2f(-1,-1));
+	endPoints[3] = findClosestPt(Vector2f(tex.width-1,0), Vector2f(-1,1));
 
 	/* Segmented the boundary */
-	std::vector<BoundaryPoint> * edges = piece.edges;
+	if (edgeInsetLevel > 0) {
+		for (int i=0; i<4; i++) {
+			int edgeSize = 0;
+			for (int j=endPoints[i]; j!=endPoints[(i+1)%4]; j=(j+1)%nPoints) edgeSize++;
+
+			piece.nEdgeColors[i][edgeInsetLevel] = edgeSize;
+			piece.edgeColors[i][edgeInsetLevel] = new Color[edgeSize];
+			for (int j=endPoints[i]; j!=endPoints[(i+1)%4]; j=(j+1)%nPoints) {
+				
+				piece.edgeColors[i][edgeInsetLevel][j] = tex(pixelBoundaryPos[j].y(), pixelBoundaryPos[j].x());
+				tex(pixelBoundaryPos[j].y(), pixelBoundaryPos[j].x()).w() = 0;
+
+				UINT rowStart = (int)(pixelBoundaryPos[j].y()) * mappedTex.RowPitch;
+				UINT colStart =  (int)(pixelBoundaryPos[j].x()) * 4;
+				pTexels[rowStart + colStart + 0] = edgeInsetLevel == 0 ? 255 : 0;
+				pTexels[rowStart + colStart + 1] = edgeInsetLevel == 1 ? 255 : 0;
+				pTexels[rowStart + colStart + 2] = edgeInsetLevel == 2 ? 255 : 0; 
+				pTexels[rowStart + colStart + 3] = 0;
+			}
+		}
+
+		pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
+		return;
+	}
+
+	EdgePoint ** edges = piece.edges;
 	for (int i=0; i<4; i++) {
-		edges[i].reserve(nPoints);
-		for (int j=endPoints[i]; j!=endPoints[(i+1)%4]; j=(j+1)%nPoints) {
-			BoundaryPoint bd;
+		int nEdgePoints=0;
+		for (int j=endPoints[i]; j!=endPoints[(i+1)%4]; j=(j+1)%nPoints) nEdgePoints++;
+		
+		piece.edges[i] = new EdgePoint[nEdgePoints];
+		piece.nEdgePoints[i] = nEdgePoints;
+		for (int j=endPoints[i], count=0; j!=endPoints[(i+1)%4]; j=(j+1)%nPoints, count++) {
+			EdgePoint bd;
 			bd.pos = pixelBoundaryPos[j];
 			bd.k = curvatures[j];
-			edges[i].push_back(bd);
+			edges[i][count] = bd;
 		}
 		piece.endPoints[i] = pixelBoundaryPos[endPoints[i]];
 	}
 
 	/* Compute stats */
 	for (int i=0; i<4; i++) {
+		int edgesSize = piece.nEdgePoints[i];
+		//std::fstream out1("out3.txt");
+		//std::fstream out2("out4.txt");
+
 		Vector3f edgeVec(piece.endPoints[(i+1)%4].x() - piece.endPoints[i].x(), piece.endPoints[(i+1)%4].y() - piece.endPoints[i].y(), 0);
+		float edgeLen = edgeVec.norm();
 		Vector3f up(0, 0, 1);
-		Vector3f edgeNor(up.cross(edgeVec));
-		piece.edgeNor[i] = Vector2f(edgeNor.x(), edgeNor.y()).normalized();
+		Vector3f edgeNor(up.cross(edgeVec).normalized());
+		piece.edgeNor[i] = Vector2f(edgeNor.x(), edgeNor.y());
 
 		int nZeros = 0;
 		Vector2f previousPt(edges[i][0].pos);
 		piece.totalCurvature[i] = 0;
 		piece.totalLength[i] = 0;
-		for (int j=0; j<edges[i].size(); j++) {
+		int nProjectedPoints = ceil(edgeLen);
+		piece.projectedPoints[i] = new float[nProjectedPoints];
+		piece.nProjectedPoints[i] = nProjectedPoints;
+		memset(piece.projectedPoints[i], 0, nProjectedPoints*sizeof(float));
+		piece.edgeColors[i][edgeInsetLevel] = new Color[edgesSize];
+		piece.nEdgeColors[i][edgeInsetLevel] = edgesSize;
+		for (int j=0; j<edgesSize; j++) {
+			// Assign color
+			piece.edgeColors[i][edgeInsetLevel][j] = tex(edges[i][j].pos.y(), edges[i][j].pos.x());
+			tex(edges[i][j].pos.y(), edges[i][j].pos.x()).w() = 0;
+
+			// Compute total curvature and len 
 			piece.totalCurvature[i] += abs(edges[i][j].k);
 			if (abs(edges[i][j].k) < .01) nZeros++;
 			piece.totalLength[i] += (previousPt - edges[i][j].pos).norm();
-			previousPt = edges[i][j].pos;
 
-			UINT rowStart = (int)(edges[i][j].pos.y()+4*piece.edgeNor[i].y()) * mappedTex.RowPitch;
-			UINT colStart =  (int)(edges[i][j].pos.x()+4*piece.edgeNor[i].x()) * 4;
-			pTexels[rowStart + colStart + 0] = i == 0 ? 255 : 0;
-			pTexels[rowStart + colStart + 1] = i == 1 ? 255 : 0;
-			pTexels[rowStart + colStart + 2] = i == 2 ? 255 : 0; 
-			pTexels[rowStart + colStart + 3] = 255;
+			// Z-Buffer
+			Vector2f & pt1 = previousPt;
+			Vector2f & pt2 = edges[i][j].pos;
+			auto Project = [&] (Vector2f & point) {
+				Vector2f l(point-piece.endPoints[i]);
+				float y = Vector2f(edgeNor.x(), edgeNor.y()).dot(l);
+				float x = sqrt(abs(l.squaredNorm() - y*y));
+				//out1 << x << ' ' << y << std::endl;
+				return Vector2f(x,y);
+			};
+			Vector2f xy1(Project(pt1));
+			Vector2f xy2(Project(pt2));
+			int xLow = ceilf((xy1.x()/edgeLen)*nProjectedPoints);
+			int xHigh = floorf((xy2.x()/edgeLen)*nProjectedPoints);
+			if (j>0){
+				for (int k=xLow; k<=xHigh; k++) {
+					float t = (xy2.x()-xy1.x());
+					assert(t != 0);
+					t = ((float)xLow-(xy1.x()/edgeLen)*nProjectedPoints)/t;
+					float y = (1-t)*xy1.y()+t*xy2.y();
+					if (y >= 0 && piece.projectedPoints[i][k] < y) piece.projectedPoints[i][k] = y;
+					else if (y <= 0 && piece.projectedPoints[i][k] > y) piece.projectedPoints[i][k] = y;
+				}
+			}
+
+			//UINT rowStart = (int)(edges[i][j].pos.y()+4*piece.edgeNor[i].y()) * mappedTex.RowPitch;
+			//UINT colStart =  (int)(edges[i][j].pos.x()+4*piece.edgeNor[i].x()) * 4;
+			UINT rowStart = (int)(edges[i][j].pos.y()) * mappedTex.RowPitch;
+			UINT colStart =  (int)(edges[i][j].pos.x()) * 4;
+			pTexels[rowStart + colStart + 0] = edgeInsetLevel == 0 ? 255 : 0;
+			pTexels[rowStart + colStart + 1] = edgeInsetLevel == 1 ? 255 : 0;
+			pTexels[rowStart + colStart + 2] = edgeInsetLevel == 2 ? 255 : 0; 
+			pTexels[rowStart + colStart + 3] = 0;
+
+			previousPt = edges[i][j].pos;
 		}
-		if ((float)nZeros/edges[i].size() > .75) {
+		//for (int ii=0; ii<nProjectedPoints; ii++) {
+		//	out2 << ii << ' ' << piece.projectedPoints[i][ii] << std::endl;
+		//}
+		if ((float)nZeros/edgesSize > .75) {
 			piece.edgeCovered[i] = 1;
 			piece.isBorderPiece = 1;
 		}
+
+		//out1.close();
+		//out2.close();
 	}
 
 	/* Sort the curvatures 
@@ -694,18 +824,21 @@ void JPuzzle::ComparePieces()
 			for (int k=0; k<4; k++) {
 				for (int l=0; l<4; l++) {
 					if (!m_AddedPuzzlePieces[i]->edgeCovered[k] && !m_NotAddedPuzzlePieces[j]->edgeCovered[l]) {
-						measures[nMeasures].measure = CompareEdgesByShape(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
-						measures[nMeasures].a = m_AddedPuzzlePieces[i];
-						measures[nMeasures].b = m_NotAddedPuzzlePieces[j];
-						measures[nMeasures].j = j;
-						measures[nMeasures].k = k;
-						measures[nMeasures++].l = l;
+						float dist = abs((m_AddedPuzzlePieces[i]->endPoints[k]-m_AddedPuzzlePieces[i]->endPoints[(k+1)%4]).norm()
+							- (m_NotAddedPuzzlePieces[j]->endPoints[l]-m_NotAddedPuzzlePieces[j]->endPoints[(l+1)%4]).norm());
+						if (dist < 12) {
+							measures[nMeasures].measure = dist+CompareEdgesByShape(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
+							measures[nMeasures].a = m_AddedPuzzlePieces[i];
+							measures[nMeasures].b = m_NotAddedPuzzlePieces[j];
+							measures[nMeasures].j = j;
+							measures[nMeasures].k = k;
+							measures[nMeasures++].l = l;
+						}
 					}
 				}
 			}
 		}
 	}
-
 	qsort(measures, nMeasures, sizeof(Data), CompareEdgeMeasures);
 
 	/* Align the pieces */
@@ -759,49 +892,48 @@ void JPuzzle::ComparePieces()
 float JPuzzle::CompareEdgesByShape(PuzzlePiece & a, PuzzlePiece & b, int k, int l)
 {
 	//return abs(a.totalLength[k] - b.totalLength[l]);
-	float asdf= abs((a.endPoints[k]-a.endPoints[(k+1)%4]).norm() - (b.endPoints[l]-b.endPoints[(l+1)%4]).norm());
+	//return abs((a.endPoints[k]-a.endPoints[(k+1)%4]).norm() - (b.endPoints[l]-b.endPoints[(l+1)%4]).norm());
 
-	std::vector<BoundaryPoint> * longEdge;
-	std::vector<BoundaryPoint> * shortEdge;
-	Vector2f longEdgeNor;
-	Vector2f shortEdgeNor;
-	Vector2f longEdgePoint;
-	Vector2f shortEdgePoint;
+	//std::ofstream out1("out1.txt");
+	//std::ofstream out2("out2.txt");
 
-	if (a.edges[k].size() > b.edges[l].size()) {
-		longEdge = &a.edges[k], shortEdge = &b.edges[l];
-		longEdgeNor = a.edgeNor[k], shortEdgeNor = b.edgeNor[l];
-		longEdgePoint = a.endPoints[k], shortEdgePoint = b.endPoints[l];
+	float * longProjectedPoints;
+	float * shortProjectedPoints;
+	float longSize;
+	float shortSize;
+	
+	if (a.nProjectedPoints[k] > b.nProjectedPoints[l]) {
+		longProjectedPoints = a.projectedPoints[k], shortProjectedPoints = b.projectedPoints[l];
+		longSize = a.nProjectedPoints[k], shortSize = b.nProjectedPoints[l];
 	} else {
-		shortEdge = &a.edges[k], longEdge = &b.edges[l];
-		shortEdgeNor = a.edgeNor[k], longEdgeNor = b.edgeNor[l];
-		shortEdgePoint = a.endPoints[k], longEdgePoint = b.endPoints[l];
+		shortProjectedPoints = a.projectedPoints[k], longProjectedPoints = b.projectedPoints[l];
+		shortSize = a.nProjectedPoints[k], longSize = b.nProjectedPoints[l];
 	}
 
-	auto Project = [] (Vector2f & normal, Vector2f & pointOnLine, Vector2f & pt) {
-		Vector2f l(pt-pointOnLine);
-		float y = normal.dot(l);
-		if (normal.x()*l.y() - normal.y()*l.x() < 0) y = -y;
-		return y;
-	};
-	
 	auto Compare = [&] (int offset) {
 		float sum=0;
-		int longEdgeSize = longEdge->size();
-		for (int i=0, end=shortEdge->size(); i<end; i++) {
-			Vector2f p1 = (*shortEdge)[end-i-1].pos;
-			Vector2f p2 = (*longEdge)[longEdgeSize-i-1].pos;
-			float hs = Project(shortEdgeNor, shortEdgePoint, (*shortEdge)[end-i-1].pos);
-			float hl = -Project(longEdgeNor, longEdgePoint, (*longEdge)[offset+i].pos);
-			sum += abs(hs-hl);
+		int longEdgeSize = longSize;
+		for (int i=0, end=shortSize; i<end; i++) {
+			float hs = shortProjectedPoints[end-i-1];
+			//out1 << i << ' ' << hs << std::endl;
+			float hl = longProjectedPoints[i+offset];
+			//out2 << i << ' ' << -hl << std::endl;
+			sum += abs(hs+hl);
 		}
 		return sum;
 	};
 
-	int offset = (longEdge->size()-shortEdge->size())/2;
-	float measure = Compare(offset);
+	int offset = (longSize-shortSize)/2;
+	float measure = Compare(offset)/shortSize;
 
-	return measure+asdf;
+	if (k==3 && l == 1) {
+		int a=0;
+	}
+	if (k==2 && l == 0) {
+		int a=0;
+	}
+
+	return measure;
 }
 
 void JPuzzle::Render(ID3D10Device * pDevice)

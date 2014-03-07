@@ -20,8 +20,23 @@ struct SimpleVertex
     D3DXVECTOR2 Tex;
 };
 
+struct Color {
+	float x,y,z,w;
+	void operator=(Vector4f & vec) {
+		x=vec.x();
+		y=vec.y();
+		z=vec.z();
+		w=vec.w();
+	}
+};
+
 struct Texture {
 	Texture():texels(0) {}
+	Texture(Texture & cpy) {
+		width=cpy.width, height=cpy.height; 
+		texels = new Vector4f[width*height];
+		memcpy(texels, cpy.texels, width*height*sizeof(Vector4f));
+	}
 	~Texture() {}
 
 	int width;
@@ -51,7 +66,9 @@ struct Texture {
 
 class JPuzzle {
 private:
-	struct BoundaryPoint {
+	static const int m_MaxEdgeInsets=4;
+
+	struct EdgePoint {
 		Vector2f pos;
 		float k;
 		float w;
@@ -61,8 +78,16 @@ private:
 		Matrix4f transform;
 		Vector2f endPoints[4];
 		Vector2f edgeNor[4];
-		std::vector<BoundaryPoint> edges[4];
+
+		EdgePoint * edges[4];
+		int nEdgePoints[4];
 		
+		Color * edgeColors[4][m_MaxEdgeInsets];
+		int nEdgeColors[4][m_MaxEdgeInsets];
+		
+		float * projectedPoints[4];
+		int nProjectedPoints[4];
+
 		bool isBorderPiece; 
 		bool edgeCovered[4];
 		float totalCurvature[4];
@@ -95,15 +120,16 @@ private:
 	HRESULT CreateGraphics(ID3D10Device * pDevice);
 	HRESULT ExtractPuzzlePieces(char * file, ID3D10Device * pDevice);
 	bool ExtractPiece(Texture & tex, Texture & tmpTex, std::vector<Vector2f> & piecePixels, int i, int j, ID3D10Device * pDevice, char * fileName);
-	void ProcessPuzzlePiece(ID3D10Device * pDevice);
+	void ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device * pDevice);
 	bool OnOutsideBoundary(int i, int j, Texture & tex);
+	bool OnBoundary(int i, int j, Texture & tex);
 	void AddPiece();
 	float CompareEdgesByShape(PuzzlePiece & a, PuzzlePiece & b, int k, int l);
 public:
 	JPuzzle();
 	~JPuzzle() {}
 
-	HRESULT Init(char * dir, ID3D10Device * pDevice);
+	HRESULT Init(char * dir, int nToLoad, ID3D10Device * pDevice);
 	void ComparePieces();
 	void Render(ID3D10Device * pDevice);
 
