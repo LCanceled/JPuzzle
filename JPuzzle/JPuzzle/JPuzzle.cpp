@@ -423,8 +423,8 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 		UINT rowStart = i * mappedTex.RowPitch;
 		UINT colStart = j * 4;
 		
-		if (pixelBoundaryPos.size() > 10 && (i+1==startY && j==startX || i-1==startY && j==startX || i==startY && j+1==startX || i==startY && j-1==startX))// ||
-			//i+1==startY && j+1==startX || i-1==startY && j+1==startX || i+1==startY && j-1==startX || i-1==startY && j-1==startX))
+		if (pixelBoundaryPos.size() > 10 && (i+1==startY && j==startX || i-1==startY && j==startX || i==startY && j+1==startX || i==startY && j-1==startX ||
+			i+1==startY && j+1==startX || i-1==startY && j+1==startX || i+1==startY && j-1==startX || i-1==startY && j-1==startX))
 			break;
 
 		int x=-1,y=-1;
@@ -432,8 +432,11 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 		else if (OnBoundary(i-1, j, tex) && !used[tex.width*(i-1) + j]) y=i-1,x=j;
 		else if (OnBoundary(i, j+1, tex) && !used[tex.width*(i) + j+1]) y=i,x=j+1;
 		else if (OnBoundary(i, j-1, tex) && !used[tex.width*(i) + j-1]) y=i,x=j-1;
-		/*
-		if (OnOutsideBoundary(i+1, j, tex) && !used[tex.width*(i+1) + j]) y=i+1,x=j;
+		else if (OnBoundary(i+1, j+1, tex) && !used[tex.width*(i+1) + j+1]) y=i+1,x=j+1;
+		else if (OnBoundary(i-1, j+1, tex) && !used[tex.width*(i-1) + j+1]) y=i-1,x=j+1;
+		else if (OnBoundary(i+1, j-1, tex) && !used[tex.width*(i+1) + j-1]) y=i+1,x=j-1;
+		else if (OnBoundary(i-1, j-1, tex) && !used[tex.width*(i-1) + j-1]) y=i-1,x=j-1;
+		/*if (OnOutsideBoundary(i+1, j, tex) && !used[tex.width*(i+1) + j]) y=i+1,x=j;
 		else if (OnOutsideBoundary(i-1, j, tex) && !used[tex.width*(i-1) + j]) y=i-1,x=j;
 		else if (OnOutsideBoundary(i, j+1, tex) && !used[tex.width*(i) + j+1]) y=i,x=j+1;
 		else if (OnOutsideBoundary(i, j-1, tex) && !used[tex.width*(i) + j-1]) y=i,x=j-1;
@@ -453,21 +456,6 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 	}
 	delete[] used;
 	int nPoints = pixelBoundaryPos.size();
-
-	/*for (int i=0; i<nPoints; i++) {
-		//if (curvatures[i] < 0) {
-			UINT rowStart = (int)pixelBoundaryPos[i].y() * mappedTex.RowPitch;
-			UINT colStart =  (int)pixelBoundaryPos[i].x() * 4;
-			pTexels[rowStart + colStart + 0] = 0;
-			pTexels[rowStart + colStart + 1] = 0;
-			pTexels[rowStart + colStart + 2] = 255; 
-			pTexels[rowStart + colStart + 3] = 255;
-		//}
-
-	}
-	pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
-	return;
-	*/
 
 	/* Correct orientation */
 	{
@@ -664,10 +652,10 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 				pTexels[rowStart + colStart + 2] = i == 2 ? 255 : 0; 
 				pTexels[rowStart + colStart + 3] = 255;
 				*/
-				/*pTexels[rowStart + colStart + 0] = edgeInsetLevel == 0 ? 255 : 0;
+				pTexels[rowStart + colStart + 0] = edgeInsetLevel == 0 ? 255 : 0;
 				pTexels[rowStart + colStart + 1] = edgeInsetLevel == 1 ? 255 : 0;
 				pTexels[rowStart + colStart + 2] = edgeInsetLevel == 2 ? 255 : 0; 
-				pTexels[rowStart + colStart + 3] = 255;*/
+				pTexels[rowStart + colStart + 3] = 255;
 			}
 		}
 
