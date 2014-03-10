@@ -765,7 +765,7 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 	for (int i=0; i<10; i++)
 		out << data[i].k << std::endl; */
 
-
+	//if (piece.isBorderPiece) OutputDebugStringA("here\n");
 	pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
 
 	/*std::ofstream stream("C:\\Users\\Aric\\Desktop\\cs231a\\FinalProject\\code\\curve_lab\\New folder\\test2.mat", std::ios::out | std::ios::binary);
