@@ -74,7 +74,7 @@ private:
 		float w;
 	};
 	struct PuzzlePiece {
-		PuzzlePiece():isBorderPiece(0) {memset(edgeCovered, 0, 4); }
+		PuzzlePiece():isBorderPiece(0) {memset(edgeCovered, 0, 4); memset(edgeIsBorder, 0, 4); }
 		Matrix4f transform;
 		Vector2f endPoints[4];
 		Vector2f edgeNor[4];
@@ -85,8 +85,55 @@ private:
 
 		bool isBorderPiece; 
 		bool edgeCovered[4];
+		bool edgeIsBorder[4];
 		float totalCurvature[4];
 		float totalLength[4];
+
+		std::vector<int> borders(){
+			std::vector<int> borders;
+			for (int i = 0; i < 4; ++i) {
+				if (edgeIsBorder[i]){
+					borders.push_back(i);
+				}
+			}
+			return borders;
+		}
+		int left(){
+			std::vector<int> border = borders();
+			if (border.size() == 1){
+				return (border[0] + 3) % 4;
+			}
+			else if (border.size() == 2){
+				int border1 = min(border[0], border[1]);
+				int border2 = max(border[0], border[1]);
+				if (border2 == border1 + 1){
+					return (border1 + 3) % 4;
+				}
+				else{
+					return (border2 + 3) % 4;
+				}
+			}
+			else
+				assert(0);
+		}
+		int right(){
+			std::vector<int> border = borders();
+			if (border.size() == 1){
+				return (border[0] + 1) % 4;
+			}
+			else if (border.size() == 2){
+				int border1 = min(border[0], border[1]);
+				int border2 = max(border[0], border[1]);
+				if (border2 == border1 + 1){
+					return (border2 + 1) % 4;
+				}
+				else{
+					return (border1 + 1) % 4;
+				}
+			}
+			else
+				assert(0);
+		}
 
 		Texture tex;
 		ID3D10ShaderResourceView* SRVPuzzleTexture;
@@ -94,6 +141,15 @@ private:
 		public:
 			EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 	};
+
+	struct Measure {
+		PuzzlePiece * a;
+		PuzzlePiece * b;
+		int j;
+		int k;
+		int l;
+	};
+
 
 	/* Puzzle graphics */
 	ID3D10Effect*                       m_pEffect;
@@ -127,6 +183,7 @@ public:
 	HRESULT Init(char * dir, int nToLoad, ID3D10Device * pDevice);
 	void ComparePieces();
 	void Render(ID3D10Device * pDevice);
+	void MovePiece(Measure & measure);
 
 	void Destroy();
 };

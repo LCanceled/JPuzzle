@@ -5,6 +5,7 @@
 #include <stack>
 #include <Eigen/Eigenvalues> 
 #include <queue>
+#include <list>
 
 JPuzzle::JPuzzle():m_pEffect(0), m_pTechnique(0), m_pVertexLayout(0), m_pVBQuad(0), m_pIBQuad(0), m_pSRVPuzzleTextureFx(0), m_pWorldfx(0), m_nPiecesAdded(0)
 {
@@ -404,11 +405,11 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 	bool * used = new bool[tex.width*tex.height];
 	memset(used, 0, sizeof(bool)*tex.width*tex.height);
 
-	D3D10_MAPPED_TEXTURE2D mappedTex;
+	/*D3D10_MAPPED_TEXTURE2D mappedTex;
 	ID3D10Texture2D * pTexture;
 	piece.SRVPuzzleTexture->GetResource((ID3D10Resource**)&pTexture);
 	pTexture->Map(D3D10CalcSubresource(0, 0, 1), D3D10_MAP_WRITE_DISCARD, 0, &mappedTex);
-	UCHAR* pTexels = (UCHAR*)mappedTex.pData;
+	UCHAR* pTexels = (UCHAR*)mappedTex.pData;*/
 	std::vector<Vector2f> pixelBoundaryPos;
 	//std::vector<Vector2f> boundaryPos;
 	std::vector<Vector2f> tmpBoundaryPos;
@@ -420,8 +421,8 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 		}
 		popped = 0;
 		used[tex.width*i + j] = 1;
-		UINT rowStart = i * mappedTex.RowPitch;
-		UINT colStart = j * 4;
+	//	UINT rowStart = i * mappedTex.RowPitch;
+	//	UINT colStart = j * 4;
 		
 		if (pixelBoundaryPos.size() > 10 && (i+1==startY && j==startX || i-1==startY && j==startX || i==startY && j+1==startX || i==startY && j-1==startX ||
 			i+1==startY && j+1==startX || i-1==startY && j+1==startX || i+1==startY && j-1==startX || i-1==startY && j-1==startX))
@@ -600,7 +601,7 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 	}
 
 	/* Find the corner points */
-	auto findClosestPt = [edgeInsetLevel, nPoints,&pixelBoundaryPos,&mappedTex,&pTexels,&angles] (Vector2f & pt, Vector2f & offset) {
+	auto findClosestPt = [edgeInsetLevel, nPoints,&pixelBoundaryPos,&angles] (Vector2f & pt, Vector2f & offset) {
 		float bestDistSq = FLT_MAX;
 		int index = 0;
 		for (int i=0; i<nPoints; i++) {
@@ -615,12 +616,12 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 
 		//UINT rowStart = (int)(pixelBoundaryPos[index].y()+offset.y()) * mappedTex.RowPitch;
 		//UINT colStart =  (int)(pixelBoundaryPos[index].x()+offset.x()) * 4;
-		UINT rowStart = (int)(pixelBoundaryPos[index].y()) * mappedTex.RowPitch;
+		/*UINT rowStart = (int)(pixelBoundaryPos[index].y()) * mappedTex.RowPitch;
 		UINT colStart =  (int)(pixelBoundaryPos[index].x()) * 4;
 		pTexels[rowStart + colStart + 0] = 0;
 		pTexels[rowStart + colStart + 1] = 255;
 		pTexels[rowStart + colStart + 2] = 0; 
-		pTexels[rowStart + colStart + 3] = 255;
+		pTexels[rowStart + colStart + 3] = 255;*/
 
 		return index;
 	};
@@ -645,21 +646,21 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 				piece.edgeColors[i][edgeInsetLevel][count] = tex(pixelBoundaryPos[j].y(), pixelBoundaryPos[j].x());
 				tex(pixelBoundaryPos[j].y(), pixelBoundaryPos[j].x()).w() = 0;
 
-				UINT rowStart = (int)(pixelBoundaryPos[j].y()) * mappedTex.RowPitch;
-				UINT colStart =  (int)(pixelBoundaryPos[j].x()) * 4;
+				//UINT rowStart = (int)(pixelBoundaryPos[j].y()) * mappedTex.RowPitch;
+				//UINT colStart =  (int)(pixelBoundaryPos[j].x()) * 4;
 				/*pTexels[rowStart + colStart + 0] = i == 0 ? 255 : 0;
 				pTexels[rowStart + colStart + 1] = i == 1 ? 255 : 0;
 				pTexels[rowStart + colStart + 2] = i == 2 ? 255 : 0; 
 				pTexels[rowStart + colStart + 3] = 255;
-				*/
+				
 				pTexels[rowStart + colStart + 0] = edgeInsetLevel == 0 ? 255 : 0;
 				pTexels[rowStart + colStart + 1] = edgeInsetLevel == 1 ? 255 : 0;
 				pTexels[rowStart + colStart + 2] = edgeInsetLevel == 2 ? 255 : 0; 
-				pTexels[rowStart + colStart + 3] = 255;
+				pTexels[rowStart + colStart + 3] = 255;*/
 			}
 		}
 
-		pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
+		//pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
 		return;
 	}
 
@@ -733,12 +734,12 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 
 			//UINT rowStart = (int)(edges[i][j].pos.y()+4*piece.edgeNor[i].y()) * mappedTex.RowPitch;
 			//UINT colStart =  (int)(edges[i][j].pos.x()+4*piece.edgeNor[i].x()) * 4;
-			UINT rowStart = (int)(edges[i][j].pos.y()) * mappedTex.RowPitch;
+			/*UINT rowStart = (int)(edges[i][j].pos.y()) * mappedTex.RowPitch;
 			UINT colStart =  (int)(edges[i][j].pos.x()) * 4;
 			pTexels[rowStart + colStart + 0] = edgeInsetLevel == 0 ? 255 : 0;
 			pTexels[rowStart + colStart + 1] = edgeInsetLevel == 1 ? 255 : 0;
 			pTexels[rowStart + colStart + 2] = edgeInsetLevel == 2 ? 255 : 0; 
-			pTexels[rowStart + colStart + 3] = 255;
+			pTexels[rowStart + colStart + 3] = 255;*/
 
 			previousPt = edges[i][j].pos;
 		}
@@ -747,6 +748,7 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 		//}
 		if ((float)nZeros/edges[i].size() > .75) {
 			piece.edgeCovered[i] = 1;
+			piece.edgeIsBorder[i] = 1;
 			piece.isBorderPiece = 1;
 		}
 
@@ -766,7 +768,7 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 		out << data[i].k << std::endl; */
 
 	//if (piece.isBorderPiece) OutputDebugStringA("here\n");
-	pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
+	//pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
 
 	/*std::ofstream stream("C:\\Users\\Aric\\Desktop\\cs231a\\FinalProject\\code\\curve_lab\\New folder\\test2.mat", std::ios::out | std::ios::binary);
 	for (int i=0; i<curves[1].size(); i++) {
@@ -779,7 +781,132 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 
 void JPuzzle::AddPiece()
 {
-	if (m_nPiecesAdded+1 <= m_nPuzzlePieces) {
+	//border pieces
+	if (m_nPiecesAdded == 1) {
+		std::vector<std::vector<float> > assignMatrix;
+		std::vector<PuzzlePiece*> borderPieces;
+		//MatrixXf mat;
+		int startidx = 0;
+		borderPieces.push_back(m_AddedPuzzlePieces[0]);
+
+		for (std::vector<PuzzlePiece*>::iterator it = m_NotAddedPuzzlePieces.begin(); it != m_NotAddedPuzzlePieces.end(); ++it) {
+			if ((*it)->isBorderPiece){
+				borderPieces.push_back(*it);
+			}
+		}
+		//std::cout << borderPieces.size();
+
+		for (std::vector<PuzzlePiece*>::iterator it_r = borderPieces.begin(); it_r != borderPieces.end(); ++it_r) {
+			std::vector<float> row;
+			for (std::vector<PuzzlePiece*>::iterator it_c = borderPieces.begin(); it_c != borderPieces.end(); ++it_c) {
+				int leftIdx = (*it_r)->left();
+				int rightIdx = (*it_c)->right();
+
+				row.push_back(CompareEdgesByShape(**it_c, **it_r, rightIdx, leftIdx));
+				//cout << Sim((*it_)->right(), (*it)->left()) << ' ' << (*it_)->orientation << ' ' << (*it)->orientation << endl;
+			}
+			assignMatrix.push_back(row);
+		}
+		std::list<int> assignment;
+	
+		assignment.push_back(startidx);
+		while (assignment.size() <borderPieces.size()){
+			//extend to the left
+			int idxL = assignment.back();
+			std::vector<float> row = assignMatrix[idxL];
+			float min = INFINITY;
+			float second_min = INFINITY;
+			float minidx = -1;
+			for (int i = 0; i<row.size(); ++i) {
+				if (idxL == i)
+					continue;
+				bool found = false;
+				for (std::list<int>::iterator j = assignment.begin(); j != assignment.end(); ++j){
+					if (i == *j){
+						found = true;
+						break;
+					}
+				}
+				if (found)
+					continue;
+
+				if (row[i] < min){
+					second_min = min;
+					min = row[i];
+					minidx = i;
+				}
+				else if (row[i] < second_min){
+					second_min = row[i];
+				}
+			}
+			float confidence = min / second_min;
+
+			//extend to the right
+			int idxR = assignment.front();
+			min = INFINITY;
+			second_min = INFINITY;
+			float minidxR = -1;
+			for (int i = 0; i<assignMatrix.size(); ++i) {
+				if (idxR == i)
+					continue;
+				bool found = false;
+				for (std::list<int>::iterator j = assignment.begin(); j != assignment.end(); ++j){
+					if (i == *j){
+						found = true;
+						break;
+					}
+
+				}
+				if (found)
+					continue;
+
+				if (assignMatrix[i][idxR] < min){
+					second_min = min;
+					min = assignMatrix[i][idxR];
+					minidxR = i;
+				}
+				else if (assignMatrix[i][idxR] < second_min){
+					second_min = assignMatrix[i][idxR];
+				}
+			}
+			if ((min / second_min) > confidence){
+				//idx = minidx;
+				assignment.push_back(minidx);
+			}
+			else{
+				//idx = minidxR;
+				assignment.push_front(minidxR);
+				startidx++;
+			}
+
+		}
+		std::list<int>::iterator it = assignment.begin();
+		std::advance(it, startidx);
+		
+		while (m_nPiecesAdded < borderPieces.size()){
+			Measure measure;
+			std::list<int>::iterator it_next = it;
+			it_next++;
+			if (it_next == assignment.end())
+				it_next = assignment.begin();
+			measure.a = borderPieces[*it];
+			measure.b = borderPieces[*it_next];
+			measure.k = (measure.a)->left();
+			measure.l = (measure.b)->right();
+				//float measure;
+			for (int i = 0; i < m_NotAddedPuzzlePieces.size(); ++i){
+				if (measure.b == m_NotAddedPuzzlePieces[i]){
+					measure.j = i;
+					break;
+				}
+			}
+			MovePiece(measure);
+			it = it_next;
+			m_nPiecesAdded++;
+		}
+	}
+		//inner pieces
+	else if (m_nPiecesAdded+1 <= m_nPuzzlePieces) {
 		m_nPiecesAdded++;
 		ComparePieces();
 		Sleep(150);
@@ -928,8 +1055,8 @@ void JPuzzle::Render(ID3D10Device * pDevice)
 	m_World = Matrix4f::Identity();
 	static float scale = 1.;
 	static Vector2f trans;
-	const float scaleAmount = .001;
-	const float transAmount = .001/scale;
+	const float scaleAmount = .01;
+	const float transAmount = .01/scale;
 	if (GetAsyncKeyState(VK_LBUTTON)) {
 		scale += scaleAmount;
 	} else if (GetAsyncKeyState(VK_RBUTTON)) {
@@ -975,4 +1102,52 @@ void JPuzzle::Destroy()
 	//for (int i=0; i<m_nPuzzlePieces; i++)
 	//	if (m_rgSRVPuzzleTexture[i]) m_rgSRVPuzzleTexture[i]->Release();
     if(m_pEffect) m_pEffect->Release();
+}
+
+void JPuzzle::MovePiece(Measure & measure)
+{
+        /* Align the pieces */
+        Measure & best = measure;
+        PuzzlePiece & a = *best.a;
+        PuzzlePiece & b = *best.b;
+        Vector4f eA0(2.f*(a.endPoints[best.k].x() / g_TextureSize) - 1, -2.f*(a.endPoints[best.k].y() / g_TextureSize) + 1, 1, 1); eA0 = a.transform*eA0;
+        Vector4f eA1(2.f*(a.endPoints[(best.k + 1) % 4].x() / g_TextureSize) - 1, -2.f*(a.endPoints[(best.k + 1) % 4].y() / g_TextureSize) + 1, 1, 1); eA1 = a.transform*eA1;
+        Vector4f eB0(2.f*(b.endPoints[best.l].x() / g_TextureSize) - 1, -2.f*(b.endPoints[best.l].y() / g_TextureSize) + 1, 1, 1); eB0 = b.transform*eB0;
+        Vector4f eB1(2.f*(b.endPoints[(best.l + 1) % 4].x() / g_TextureSize) - 1, -2.f*(b.endPoints[(best.l + 1) % 4].y() / g_TextureSize) + 1, 1, 1); eB1 = b.transform*eB1;
+
+        Vector2f vA(eA1.x() - eA0.x(), eA1.y() - eA0.y()); vA.normalize();
+        Vector2f vB(eB0.x() - eB1.x(), eB0.y() - eB1.y()); vB.normalize();
+
+        // Compute b's transform
+        float cr = vB.x()*vA.y() - vB.y()*vA.x();
+        float dot = vB.dot(vA);
+        if (dot < -1) dot = -1;
+        if (dot > 1) dot = 1;
+        float theta = acos(dot);
+        if (cr < 0) theta = -theta;
+        Matrix3f rot; rot = AngleAxisf(theta, Vector3f::UnitZ());
+        Vector3f rotatedaasdf = rot*Vector3f(vB[0], vB[1], 0);
+
+        Matrix4f R = Matrix4f::Identity();
+        for (int i = 0; i<3; i++)
+        for (int j = 0; j<3; j++)
+                R(i, j) = rot(i, j);
+        Matrix4f T1 = Matrix4f::Identity();
+        T1(0, 3) = -.5f*(eB0.x() + eB1.x());
+        T1(1, 3) = -.5f*(eB0.y() + eB1.y());
+        Matrix4f T2 = Matrix4f::Identity();
+        T2(0, 3) = .5f*(eA0.x() + eA1.x());
+        T2(1, 3) = .5f*(eA0.y() + eA1.y());
+
+        b.transform = T2*R*T1;
+
+        Vector4f asdf = T2*R*T1*Vector4f(eB0.x(), eB0.y(), 0, 1);
+        Vector4f asdf2 = T2*R*T1*Vector4f(eB1.x(), eB1.y(), 0, 1);
+        Vector4f dif = asdf2 - asdf;
+
+        // Update puzzle info
+        m_AddedPuzzlePieces.push_back(&b);
+        m_NotAddedPuzzlePieces.erase(m_NotAddedPuzzlePieces.begin() + best.j);
+        a.edgeCovered[best.k] = 1;
+        b.edgeCovered[best.l] = 1;
 }
