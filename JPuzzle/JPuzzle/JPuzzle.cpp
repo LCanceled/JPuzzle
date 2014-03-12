@@ -950,9 +950,10 @@ void JPuzzle::AddPiece()
 		}
 	}
 		//inner pieces
-	 if (m_nPiecesAdded+1 <= m_nPuzzlePieces) {
+	else if (m_nPiecesAdded+1 <= m_nPuzzlePieces) {
 		m_nPiecesAdded++;
 		ComparePieces();
+		//MatchPocket(FindPockets());
 		Sleep(150);
 	}
 }
@@ -983,16 +984,16 @@ void JPuzzle::ComparePieces()
 			for (int k=0; k<4; k++) {
 				for (int l=0; l<4; l++) {
 					if (!m_AddedPuzzlePieces[i]->edgeCovered[k] && !m_NotAddedPuzzlePieces[j]->edgeCovered[l]) {
-						//float dist = abs((m_AddedPuzzlePieces[i]->endPoints[k]-m_AddedPuzzlePieces[i]->endPoints[(k+1)%4]).norm()
-						//	- (m_NotAddedPuzzlePieces[j]->endPoints[l]-m_NotAddedPuzzlePieces[j]->endPoints[(l+1)%4]).norm());
-						//if (dist < 12) {
+						float dist = abs((m_AddedPuzzlePieces[i]->endPoints[k]-m_AddedPuzzlePieces[i]->endPoints[(k+1)%4]).norm()
+							- (m_NotAddedPuzzlePieces[j]->endPoints[l]-m_NotAddedPuzzlePieces[j]->endPoints[(l+1)%4]).norm());
+						if (dist < 12) {
 							measures[nMeasures].measure = CompareEdgesByColor(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
 							measures[nMeasures].a = m_AddedPuzzlePieces[i];
 							measures[nMeasures].b = m_NotAddedPuzzlePieces[j];
 							measures[nMeasures].j = j;
 							measures[nMeasures].k = k;
 							measures[nMeasures++].l = l;
-						//}
+						}
 					}
 				}
 			}
@@ -1103,7 +1104,7 @@ void JPuzzle::Render(ID3D10Device * pDevice)
 	const float transAmount = .01/scale;
 	if (GetAsyncKeyState(VK_LBUTTON)) {
 		scale += scaleAmount;
-	} else if (GetAsyncKeyState(VK_RBUTTON)) {
+	} else if (GetAsyncKeyState(VK_SPACE)) {
 		scale -= scaleAmount;
 	} else if (GetAsyncKeyState(VK_UP)) {
 		trans.y() -= transAmount;
@@ -1169,6 +1170,8 @@ void JPuzzle::MovePiece(Measure & measure)
         if (dot > 1) dot = 1;
         float theta = acos(dot);
         if (cr < 0) theta = -theta;
+		float unitTheta = round(theta/(D3DX_PI/2.f));
+		theta = unitTheta*D3DX_PI/2.f;
         Matrix3f rot; rot = AngleAxisf(theta, Vector3f::UnitZ());
         Vector3f rotatedaasdf = rot*Vector3f(vB[0], vB[1], 0);
 
@@ -1184,6 +1187,7 @@ void JPuzzle::MovePiece(Measure & measure)
         T2(1, 3) = .5f*(eA0.y() + eA1.y());
 
         b.transform = T2*R*T1;
+		b.rotation = R;
 
         Vector4f asdf = T2*R*T1*Vector4f(eB0.x(), eB0.y(), 0, 1);
         Vector4f asdf2 = T2*R*T1*Vector4f(eB1.x(), eB1.y(), 0, 1);
@@ -1318,4 +1322,105 @@ float JPuzzle::MGC(std::vector<Color> left[2], std::vector<Color> right[2]) {
 		DRL += XRL.row(r)*SjRpinv*XRL.row(r).transpose();
 	}
 	return sqrt(DLR) + sqrt(DRL);
+}
+
+std::vector<JPuzzle::Pocket> JPuzzle::FindPockets(){
+	//find uncovered edges from added pieces
+	//find two edges sharing one endpoint and almost perpendicular
+	//return Pockets
+	std::vector<Pocket> pockets;
+	return pockets;
+}
+void JPuzzle::MatchPocket(std::vector<Pocket> pockets) {
+	//iterate through all the pockets and find the one with the best "confidence"
+	Measure bestPocket;
+	bestPocket.measure = INFINITY;
+	for(std::vector<Pocket>::iterator p_it = pockets.begin(); p_it != pockets.end(); ++p_it) {
+		 PuzzlePiece* bestMatch;
+		 std::vector<float> sim1;
+		 std::vector<float> sim2;
+		 for (std::vector<PuzzlePiece*>::iterator it = m_NotAddedPuzzlePieces.begin(); it != m_NotAddedPuzzlePieces.end(); ++it) {
+			 //TODO:Shape????
+			 //orientation 1
+				sim1.push_back(CompareEdgesByColor(*(p_it->a), **it, p_it->k, 0));
+				sim2.push_back(CompareEdgesByColor(*(p_it->b), **it, p_it->l, 1));
+				//orientation 2
+				sim1.push_back(CompareEdgesByColor(*(p_it->a), **it, p_it->k, 1));
+				sim2.push_back(CompareEdgesByColor(*(p_it->b), **it, p_it->l, 2));
+				//orientation 3
+				sim1.push_back(CompareEdgesByColor(*(p_it->a), **it, p_it->k, 2));
+				sim2.push_back(CompareEdgesByColor(*(p_it->b), **it, p_it->l, 3));
+				//orientation 4
+				sim1.push_back(CompareEdgesByColor(*(p_it->a), **it, p_it->k, 3));
+				sim2.push_back(CompareEdgesByColor(*(p_it->b), **it, p_it->l, 0));
+
+                //sim = simL + simT - alpha*sqrt(simL*simL+simT*simT-(simL+simT)*(simL+simT)/4.0);
+                //cout << sim << endl;
+		 }
+        float max[2]={INFINITY,INFINITY}, second_max[2]={INFINITY,INFINITY};
+        for(int k=0; k<sim1.size(); k++){
+            if(sim1[k]<max[0]){
+                second_max[0] = max[0];
+                max[0] = sim1[k];
+            }
+            else if(sim1[k]<second_max[0]){
+                second_max[0] = sim1[k];
+            }
+
+            if(sim2[k]<max[1]){
+                second_max[1] = max[1];
+                max[1] = sim2[k];
+            }
+            else if(sim2[k]<second_max[1]){
+                second_max[1] = sim2[k];
+            }
+        }
+        float sim = INFINITY;
+        /*if(sim1.size()==1){
+            Pocket p;
+            p.best_fit = *(pool.begin());
+            p.i = i;
+            p.j = j;
+            //p.best_fit_it = pool.begin();
+            p.sim = 2.0;
+            p.p = type;
+            
+            return p;
+        }*/
+        int max_idx = -1;
+        for(int k=0; k<sim1.size(); k++){
+            float s1=0;
+            if(sim1[k])
+                s1 = sim1[k]/second_max[0];
+            float s2 = 0;
+            if(sim2[k])
+                s2 = sim2[k]/second_max[1];
+			float alpha = 1.f;
+            float s = s1 + s2 + alpha*sqrt(s1*s1+s2*s2-(s1+s2)*(s1+s2)/4.f);
+     
+            //waitKey(0);
+            if(s < sim){
+                sim = s;
+                max_idx = k;
+            }
+        }
+		if(sim < bestPocket.measure) {
+			int pidx = max_idx/4;
+			int orientation = max_idx%4;
+			std::vector<PuzzlePiece*>::iterator it = m_NotAddedPuzzlePieces.begin();
+			std::advance(it, max_idx);
+			bestPocket.a = p_it->a;
+			bestPocket.b = *it;
+			bestPocket.k = p_it->k;
+			bestPocket.l = orientation;
+			bestPocket.j = max_idx;
+			bestPocket.measure = sim;
+		}
+        //result[i*m+j] = *it;
+        //cout << max_idx << endl;
+	}
+	MovePiece(bestPocket);
+	//move the piece
+	//add the piece
+	//book keeping
 }
