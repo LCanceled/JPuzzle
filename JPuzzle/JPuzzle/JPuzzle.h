@@ -21,12 +21,25 @@ struct SimpleVertex
 };
 
 struct Color {
+	Color():x(0),y(0),z(0),w(0){}
 	float x,y,z,w;
 	void operator=(Vector4f & vec) {
 		x=vec.x();
 		y=vec.y();
 		z=vec.z();
 		w=vec.w();
+	}
+	float operator[](int idx) {
+		switch(idx){
+		case 0:
+			return x;
+		case 1: 
+			return y;
+		case 2:
+			return z;
+		default:
+			return w;
+		}
 	}
 };
 
@@ -146,7 +159,7 @@ private:
 		float measure;
 		PuzzlePiece * a;
 		PuzzlePiece * b;
-		int j;	
+		int j;
 		int k;
 		int l;
 	};
@@ -178,6 +191,7 @@ private:
 	void AddPiece();
 	float CompareEdgesByShape(PuzzlePiece & a, PuzzlePiece & b, int k, int l);
 	float CompareEdgesByColor(PuzzlePiece & a, PuzzlePiece & b, int k, int l);
+	float MGC(std::vector<Color> left[2], std::vector<Color> right[2]);
 public:
 	JPuzzle();
 	~JPuzzle() {}
@@ -189,6 +203,5 @@ public:
 
 	void Destroy();
 };
-
 
 #endif
