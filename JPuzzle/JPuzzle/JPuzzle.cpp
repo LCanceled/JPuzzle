@@ -399,6 +399,9 @@ int CompareCurvature(const void * a, const void * b)
 void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device * pDevice)
 {
 	PuzzlePiece & piece = m_PuzzlePieces[m_nPuzzlePieces-1];
+	char buf[256];
+	sprintf(buf, "\n%i\n", m_nPuzzlePieces);
+	OutputDebugStringA(buf);
 
 	/* Find pixels on boundary */
 	int i=tex.height/2, j=0;
@@ -408,19 +411,27 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 	//j -= 1;
 	int startX = j;
 	int startY = i;
+	if (startX >= tex.width-1)
+		DebugBreak();
 
 	bool * used = new bool[tex.width*tex.height];
 	memset(used, 0, sizeof(bool)*tex.width*tex.height);
 
-	/*D3D10_MAPPED_TEXTURE2D mappedTex;
+	D3D10_MAPPED_TEXTURE2D mappedTex;
 	ID3D10Texture2D * pTexture;
 	piece.SRVPuzzleTexture->GetResource((ID3D10Resource**)&pTexture);
 	pTexture->Map(D3D10CalcSubresource(0, 0, 1), D3D10_MAP_WRITE_DISCARD, 0, &mappedTex);
-	UCHAR* pTexels = (UCHAR*)mappedTex.pData;*/
+	UCHAR* pTexels = (UCHAR*)mappedTex.pData;
 	std::vector<Vector2f> pixelBoundaryPos;
 	//std::vector<Vector2f> boundaryPos;
 	std::vector<Vector2f> tmpBoundaryPos;
 	bool popped = 0;
+
+	auto IsAtStart = [] (int i, int j, int startX, int startY) {
+		return (i+1==startY && j==startX || i-1==startY && j==startX || i==startY && j+1==startX || i==startY && j-1==startX ||
+			i+1==startY && j+1==startX || i-1==startY && j+1==startX || i+1==startY && j-1==startX || i-1==startY && j-1==startX);
+	};
+
 	for (; ;) {
 		if (!popped) {
 			pixelBoundaryPos.push_back(Vector2f(j, i));
@@ -428,11 +439,17 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 		}
 		popped = 0;
 		used[tex.width*i + j] = 1;
-	//	UINT rowStart = i * mappedTex.RowPitch;
-	//	UINT colStart = j * 4;
+
+		/*if (edgeInsetLevel == 1) {
+			UINT rowStart = (int)pixelBoundaryPos.back().y() * mappedTex.RowPitch;
+			UINT colStart =  (int)pixelBoundaryPos.back().x() * 4;
+			pTexels[rowStart + colStart + 0] = 255*edgeInsetLevel;
+			pTexels[rowStart + colStart + 1] = 255;
+			pTexels[rowStart + colStart + 2] = 0; 
+			pTexels[rowStart + colStart + 3] = 255;
+		}//*/
 		
-		if (pixelBoundaryPos.size() > 10 && (i+1==startY && j==startX || i-1==startY && j==startX || i==startY && j+1==startX || i==startY && j-1==startX ||
-			i+1==startY && j+1==startX || i-1==startY && j+1==startX || i+1==startY && j-1==startX || i-1==startY && j-1==startX))
+		if (pixelBoundaryPos.size() > 10 && IsAtStart(i, j, startX, startY))
 			break;
 
 		int x=-1,y=-1;
@@ -453,10 +470,18 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 		else if (OnOutsideBoundary(i+1, j-1, tex) && !used[tex.width*(i+1) + j-1]) y=i+1,x=j-1;
 		else if (OnOutsideBoundary(i-1, j-1, tex) && !used[tex.width*(i-1) + j-1]) y=i-1,x=j-1;*/
 		else { // back track
+			if (pixelBoundaryPos.size() > 10 && (
+				IsAtStart(i, j, pixelBoundaryPos[1].x(), pixelBoundaryPos[1].y()) || 
+				IsAtStart(i, j, pixelBoundaryPos[2].x(), pixelBoundaryPos[2].y()) ))
+				break;
+
 			pixelBoundaryPos.pop_back();
+			if (pixelBoundaryPos.size() == 0) 
+				DebugBreak();
 			y = (int)pixelBoundaryPos.back().y();
 			x = (int)pixelBoundaryPos.back().x();
 			popped=1;
+			
 		}
 
 		i = y;
@@ -608,7 +633,7 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 	}
 
 	/* Find the corner points */
-	auto findClosestPt = [edgeInsetLevel, nPoints,&pixelBoundaryPos,&angles] (Vector2f & pt, Vector2f & offset) {
+	auto findClosestPt = [edgeInsetLevel, nPoints,&pixelBoundaryPos,&angles,&pTexels,&mappedTex] (Vector2f & pt, Vector2f & offset) {
 		float bestDistSq = FLT_MAX;
 		int index = 0;
 		for (int i=0; i<nPoints; i++) {
@@ -621,23 +646,30 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 			}
 		}
 
-		//UINT rowStart = (int)(pixelBoundaryPos[index].y()+offset.y()) * mappedTex.RowPitch;
-		//UINT colStart =  (int)(pixelBoundaryPos[index].x()+offset.x()) * 4;
-		/*UINT rowStart = (int)(pixelBoundaryPos[index].y()) * mappedTex.RowPitch;
+	//	if (offset == Vector2f(-1,-1)) {
+		UINT rowStart = (int)(pixelBoundaryPos[index].y()) * mappedTex.RowPitch;
 		UINT colStart =  (int)(pixelBoundaryPos[index].x()) * 4;
+		//UINT rowStart = (int)(pixelBoundaryPos[index].y()) * mappedTex.RowPitch;
+		//UINT colStart =  (int)(pixelBoundaryPos[index].x()) * 4;
 		pTexels[rowStart + colStart + 0] = 0;
 		pTexels[rowStart + colStart + 1] = 255;
 		pTexels[rowStart + colStart + 2] = 0; 
-		pTexels[rowStart + colStart + 3] = 255;*/
-
+		pTexels[rowStart + colStart + 3] = 255;//*/
+		//}
 		return index;
 	};
     int endPoints[4];
-	endPoints[0] = findClosestPt(Vector2f(0,0), Vector2f(1,1));
-	endPoints[1] = findClosestPt(Vector2f(0,tex.height-1), Vector2f(1,-1));
-	endPoints[2] = findClosestPt(Vector2f(tex.width-1,tex.height-1), Vector2f(-1,-1));
-	endPoints[3] = findClosestPt(Vector2f(tex.width-1,0), Vector2f(-1,1));
-
+	//if (edgeInsetLevel == 0) {
+		endPoints[0] = findClosestPt(Vector2f(0,0), Vector2f(1,1));
+		endPoints[1] = findClosestPt(Vector2f(0,tex.height-1), Vector2f(1,-1));
+		endPoints[2] = findClosestPt(Vector2f(tex.width-1,tex.height-1), Vector2f(-1,-1));
+		endPoints[3] = findClosestPt(Vector2f(tex.width-1,0), Vector2f(-1,1));
+/*	} else {
+		endPoints[0] = findClosestPt(piece.endPoints[0], Vector2f(1,1));
+		endPoints[1] = findClosestPt(piece.endPoints[1], Vector2f(1,-1));
+		endPoints[2] = findClosestPt(piece.endPoints[2], Vector2f(-1,-1));
+		endPoints[3] = findClosestPt(piece.endPoints[3], Vector2f(-1,1));
+	}*/
 	/* Segmented the boundary */
 	if (edgeInsetLevel > 0) {
 		for (int i=0; i<4; i++) {
@@ -667,7 +699,7 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 			}
 		}
 
-		//pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
+		pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
 		return;
 	}
 
@@ -775,7 +807,7 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 		out << data[i].k << std::endl; */
 
 	//if (piece.isBorderPiece) OutputDebugStringA("here\n");
-	//pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
+	pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
 
 	/*std::ofstream stream("C:\\Users\\Aric\\Desktop\\cs231a\\FinalProject\\code\\curve_lab\\New folder\\test2.mat", std::ios::out | std::ios::binary);
 	for (int i=0; i<curves[1].size(); i++) {
@@ -808,7 +840,7 @@ void JPuzzle::AddPiece()
 			for (std::vector<PuzzlePiece*>::iterator it_c = borderPieces.begin(); it_c != borderPieces.end(); ++it_c) {
 				int leftIdx = (*it_r)->left();
 				int rightIdx = (*it_c)->right();
-				if(CompareEdgesByShape(**it_c, **it_r, rightIdx, leftIdx) < 3)
+				if(CompareEdgesByShape(**it_c, **it_r, rightIdx, leftIdx) < 3.5)
 					row.push_back(CompareEdgesByColor(**it_c, **it_r, rightIdx, leftIdx));
 				else
 					row.push_back(100000);
@@ -1001,33 +1033,36 @@ void JPuzzle::ComparePieces()
 	float maxShapeMeasure = measures[nMeasures-1].measure;
 
 	// Compare by Color
-	//std::ofstream out7("out7.txt", std::ofstream::out | std::ofstream::trunc);
+	std::ofstream out7("out7.txt", std::ofstream::out | std::ofstream::trunc);
 	//char buf[256];
 	//sprintf(buf, "\n%i\n", nMeasures);
 	//OutputDebugStringA(buf);
 	int count=0;
 	for (int i=0; i<nMeasures; i++) {
-		if (measures[i].measure < 3) count++;
-		//out7 << measures[i].measure << std::endl;
+		if (measures[i].measure < 4) count++;
+		out7 << measures[i].measure << std::endl;
 	}
 
 	int nNewMeasures = min(count, nMeasures);
 	for (int i=0; i<nNewMeasures; i++) {
 		measures[i].measure = CompareEdgesByColor(*measures[i].a, *measures[i].b, measures[i].k, measures[i].l);
 	}
+	EdgeLinkInfo * oldMeasures = new EdgeLinkInfo[nMeasures];
+	memcpy(oldMeasures, measures, sizeof(EdgeLinkInfo)*nMeasures);
 	qsort(measures, nNewMeasures, sizeof(EdgeLinkInfo), CompareEdgeMeasures);
 	float maxColorMeasure = measures[nNewMeasures-1].measure;
-
+	
 	for (int i=0; i<nMeasures; i++) {
-		//if (i < nNewMeasures)
-		//	out7 << measures[i].measure*(maxShapeMeasure/maxColorMeasure) << std::endl;
-		//else out7 << 0 << std::endl;
+		if (i < nNewMeasures)
+			out7 << oldMeasures[i].measure*(maxShapeMeasure/maxColorMeasure) << std::endl;
+		else out7 << 0 << std::endl;
 	}
-	//out7.close();
+	out7.close();
 
 	MovePiece(measures[0]);
 
 	delete[] measures;
+	delete[] oldMeasures;
 }
 
 float JPuzzle::CompareEdgesByShape(PuzzlePiece & a, PuzzlePiece & b, int k, int l)

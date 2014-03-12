@@ -82,7 +82,7 @@ struct Texture {
 
 class JPuzzle {
 private:
-	static const int m_MaxColorLayers=6;
+	static const int m_MaxColorLayers=5;
 
 	struct EdgePoint {
 		Vector2f pos;

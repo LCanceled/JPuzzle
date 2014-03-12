@@ -154,9 +154,9 @@ HRESULT InitDevice()
     vp.MaxDepth = 1.0f;
     vp.TopLeftX = 0;
     vp.TopLeftY = 0;
-    g_pd3dDevice->RSSetViewports( 1, &vp );
+    g_pd3dDevice->RSSetViewports(1, &vp );
 
-    return jPuzzle.Init("puzzle3",40, g_pd3dDevice);
+    return jPuzzle.Init("puzzle4",60, g_pd3dDevice);
 }
 
 void CleanupDevice()
