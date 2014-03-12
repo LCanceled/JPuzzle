@@ -950,7 +950,7 @@ void JPuzzle::AddPiece()
 		}
 	}
 		//inner pieces
-	else if (m_nPiecesAdded+1 <= m_nPuzzlePieces) {
+	 if (m_nPiecesAdded+1 <= m_nPuzzlePieces) {
 		m_nPiecesAdded++;
 		ComparePieces();
 		Sleep(150);
@@ -983,16 +983,16 @@ void JPuzzle::ComparePieces()
 			for (int k=0; k<4; k++) {
 				for (int l=0; l<4; l++) {
 					if (!m_AddedPuzzlePieces[i]->edgeCovered[k] && !m_NotAddedPuzzlePieces[j]->edgeCovered[l]) {
-						float dist = abs((m_AddedPuzzlePieces[i]->endPoints[k]-m_AddedPuzzlePieces[i]->endPoints[(k+1)%4]).norm()
-							- (m_NotAddedPuzzlePieces[j]->endPoints[l]-m_NotAddedPuzzlePieces[j]->endPoints[(l+1)%4]).norm());
-						if (dist < 12) {
-							measures[nMeasures].measure = dist+CompareEdgesByShape(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
+						//float dist = abs((m_AddedPuzzlePieces[i]->endPoints[k]-m_AddedPuzzlePieces[i]->endPoints[(k+1)%4]).norm()
+						//	- (m_NotAddedPuzzlePieces[j]->endPoints[l]-m_NotAddedPuzzlePieces[j]->endPoints[(l+1)%4]).norm());
+						//if (dist < 12) {
+							measures[nMeasures].measure = CompareEdgesByColor(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
 							measures[nMeasures].a = m_AddedPuzzlePieces[i];
 							measures[nMeasures].b = m_NotAddedPuzzlePieces[j];
 							measures[nMeasures].j = j;
 							measures[nMeasures].k = k;
 							measures[nMeasures++].l = l;
-						}
+						//}
 					}
 				}
 			}
@@ -1213,9 +1213,20 @@ float JPuzzle::CompareEdgesByColor(PuzzlePiece & a, PuzzlePiece & b, int k, int 
 		shortProjectedPoints = &a.projectedPoints[k], longProjectedPoints = &b.projectedPoints[l];
 	}*/
 	left[0] = std::vector<Color>(a.edgeColors[k][m_MaxEdgeInsets-1].begin(), a.edgeColors[k][m_MaxEdgeInsets-1].begin()+min_size);
-	left[1] = std::vector<Color>(a.edgeColors[k][(m_MaxEdgeInsets-1)/2].begin(), a.edgeColors[k][(m_MaxEdgeInsets-1)/2].begin() + min_size);
-	right[0] = std::vector<Color>(b.edgeColors[l][(m_MaxEdgeInsets-1)/2].begin(), b.edgeColors[l][(m_MaxEdgeInsets-1)/2].begin() + min_size);
-	right[1] = std::vector<Color>(b.edgeColors[l][m_MaxEdgeInsets-1].begin(), b.edgeColors[l][m_MaxEdgeInsets-1].begin() + min_size);
+	//left[1] = std::vector<Color>(a.edgeColors[k][(m_MaxEdgeInsets-1)/2].begin(), a.edgeColors[k][(m_MaxEdgeInsets-1)/2].begin() + min_size);
+	left[1] = std::vector<Color>(a.edgeColors[k][(m_MaxEdgeInsets-2)].begin(), a.edgeColors[k][(m_MaxEdgeInsets-2)].begin() + min_size);
+
+	right[0] = std::vector<Color>();
+	right[1] = std::vector<Color>();
+
+	//std::vector<Color>::iterator it_r0 = b.edgeColors[l][(m_MaxEdgeInsets-1)/2].end();
+	std::vector<Color>::iterator it_r0 = b.edgeColors[l][(m_MaxEdgeInsets-2)].end();
+	std::vector<Color>::iterator it_r1 = b.edgeColors[l][m_MaxEdgeInsets-1].end();
+
+	for(int i=0; i<min_size; ++i){
+		right[0].push_back(*(--it_r0));
+		right[1].push_back(*(--it_r1));
+	}
 
 	//left[0] = std::vector<Color>(a.edgeColors[k][3].begin(), a.edgeColors[k][3].end());
 	//left[1] = std::vector<Color>(a.edgeColors[k][2].begin(), a.edgeColors[k][2].end());
