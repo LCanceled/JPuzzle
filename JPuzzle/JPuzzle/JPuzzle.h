@@ -66,7 +66,7 @@ struct Texture {
 
 class JPuzzle {
 private:
-	static const int m_MaxEdgeInsets=1;
+	static const int m_MaxColorLayers=4;
 
 	struct EdgePoint {
 		Vector2f pos;
@@ -80,7 +80,7 @@ private:
 		Vector2f edgeNor[4];
 
 		std::vector<EdgePoint> edges[4];	
-		std::vector<Color> edgeColors[4][m_MaxEdgeInsets];
+		std::vector<Color> edgeColors[4][m_MaxColorLayers];
 		std::vector<float> projectedPoints[4];
 
 		bool isBorderPiece; 
@@ -142,10 +142,11 @@ private:
 			EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 	};
 
-	struct Measure {
+	struct EdgeLinkInfo {
+		float measure;
 		PuzzlePiece * a;
 		PuzzlePiece * b;
-		int j;
+		int j;	
 		int k;
 		int l;
 	};
@@ -176,6 +177,7 @@ private:
 	bool OnBoundary(int i, int j, Texture & tex);
 	void AddPiece();
 	float CompareEdgesByShape(PuzzlePiece & a, PuzzlePiece & b, int k, int l);
+	float CompareEdgesByColor(PuzzlePiece & a, PuzzlePiece & b, int k, int l);
 public:
 	JPuzzle();
 	~JPuzzle() {}
@@ -183,7 +185,7 @@ public:
 	HRESULT Init(char * dir, int nToLoad, ID3D10Device * pDevice);
 	void ComparePieces();
 	void Render(ID3D10Device * pDevice);
-	void MovePiece(Measure & measure);
+	void MovePiece(EdgeLinkInfo & measure);
 
 	void Destroy();
 };

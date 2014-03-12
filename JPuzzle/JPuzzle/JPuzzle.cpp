@@ -334,7 +334,7 @@ HRESULT JPuzzle::Init(char * file, int nToLoad, ID3D10Device * pDevice)
 		m_PuzzlePieces[m_nPuzzlePieces++] = piece;
 
 		Texture tmpTex(piece.tex);
-		for (int k=0; k<m_MaxEdgeInsets; k++)
+		for (int k=0; k<m_MaxColorLayers; k++)
 			ProcessPuzzlePiece(tmpTex, k, pDevice);
 
 		if (i>=nToLoad-1) break;
@@ -782,7 +782,7 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 void JPuzzle::AddPiece()
 {
 	//border pieces
-	if (m_nPiecesAdded == 1) {
+	if (0) {//m_nPiecesAdded == 1) {
 		std::vector<std::vector<float> > assignMatrix;
 		std::vector<PuzzlePiece*> borderPieces;
 		//MatrixXf mat;
@@ -884,7 +884,7 @@ void JPuzzle::AddPiece()
 		std::advance(it, startidx);
 		
 		while (m_nPiecesAdded < borderPieces.size()){
-			Measure measure;
+			EdgeLinkInfo measure;
 			std::list<int>::iterator it_next = it;
 			it_next++;
 			if (it_next == assignment.end())
@@ -922,85 +922,35 @@ int CompareEdgeMeasures(const void * a, const void * b)
 
 void JPuzzle::ComparePieces()
 {
-	struct Data {
-		float measure;
-		PuzzlePiece * a;
-		PuzzlePiece * b;
-		int j;
-		int k;
-		int l;
-	};
-
 	/* Compute the measures */
 	int nMeasures = 0;
-	Data * measures = new Data[m_AddedPuzzlePieces.size()*m_NotAddedPuzzlePieces.size()*4*4]; 
+	EdgeLinkInfo * measures = new EdgeLinkInfo[m_AddedPuzzlePieces.size()*m_NotAddedPuzzlePieces.size()*4*4]; 
 	for (int i=0; i<m_AddedPuzzlePieces.size(); i++) {
 		for (int j=0; j<m_NotAddedPuzzlePieces.size(); j++) {
 			for (int k=0; k<4; k++) {
 				for (int l=0; l<4; l++) {
 					if (!m_AddedPuzzlePieces[i]->edgeCovered[k] && !m_NotAddedPuzzlePieces[j]->edgeCovered[l]) {
-						float dist = abs((m_AddedPuzzlePieces[i]->endPoints[k]-m_AddedPuzzlePieces[i]->endPoints[(k+1)%4]).norm()
-							- (m_NotAddedPuzzlePieces[j]->endPoints[l]-m_NotAddedPuzzlePieces[j]->endPoints[(l+1)%4]).norm());
-						if (dist < 12) {
-							measures[nMeasures].measure = dist+CompareEdgesByShape(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
+						//float dist = abs((m_AddedPuzzlePieces[i]->endPoints[k]-m_AddedPuzzlePieces[i]->endPoints[(k+1)%4]).norm()
+						//	- (m_NotAddedPuzzlePieces[j]->endPoints[l]-m_NotAddedPuzzlePieces[j]->endPoints[(l+1)%4]).norm());
+						//if (dist < 12) {
+							//measures[nMeasures].measure = CompareEdgesByShape(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
+							measures[nMeasures].measure = CompareEdgesByColor(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
+							//measures[nMeasures].measure = dist+CompareEdgesByShape(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
 							measures[nMeasures].a = m_AddedPuzzlePieces[i];
 							measures[nMeasures].b = m_NotAddedPuzzlePieces[j];
 							measures[nMeasures].j = j;
 							measures[nMeasures].k = k;
 							measures[nMeasures++].l = l;
-						}
+						//}
 					}
 				}
 			}
 		}
 	}
-	qsort(measures, nMeasures, sizeof(Data), CompareEdgeMeasures);
+	qsort(measures, nMeasures, sizeof(EdgeLinkInfo), CompareEdgeMeasures);
 
-	/* Align the pieces */
-	Data & best = measures[0];
-	PuzzlePiece & a = *best.a;
-	PuzzlePiece & b = *best.b;
-	Vector4f eA0(2.f*(a.endPoints[best.k].x()/			g_TextureSize)-1, -2.f*(a.endPoints[best.k].y()/		g_TextureSize)+1, 1, 1); eA0 = a.transform*eA0;
-	Vector4f eA1(2.f*(a.endPoints[(best.k+1)%4].x()/	g_TextureSize)-1, -2.f*(a.endPoints[(best.k+1)%4].y()/	g_TextureSize)+1, 1, 1); eA1 = a.transform*eA1;
-	Vector4f eB0(2.f*(b.endPoints[best.l].x()/			g_TextureSize)-1, -2.f*(b.endPoints[best.l].y()/		g_TextureSize)+1, 1, 1); eB0 = b.transform*eB0;
-	Vector4f eB1(2.f*(b.endPoints[(best.l+1)%4].x()/	g_TextureSize)-1, -2.f*(b.endPoints[(best.l+1)%4].y()/	g_TextureSize)+1, 1, 1); eB1 = b.transform*eB1;
-
-	Vector2f vA(eA1.x()-eA0.x(), eA1.y()-eA0.y()); vA.normalize();
-	Vector2f vB(eB0.x()-eB1.x(), eB0.y()-eB1.y()); vB.normalize();
-
-	// Compute b's transform
-	float cr = vB.x()*vA.y() - vB.y()*vA.x();
-	float dot = vB.dot(vA);
-	if (dot < -1) dot = -1;
-	if (dot > 1) dot = 1;
-	float theta = acos(dot);
-	if (cr < 0) theta = -theta;
-	Matrix3f rot; rot = AngleAxisf(theta, Vector3f::UnitZ()); 
-	Vector3f rotatedaasdf = rot*Vector3f(vB[0],vB[1],0);
+	MovePiece(measures[0]);
 	
-	Matrix4f R = Matrix4f::Identity();
-	for (int i=0; i<3; i++)
-		for (int j=0; j<3; j++)
-			R(i,j) = rot(i,j);
-	Matrix4f T1 = Matrix4f::Identity(); 
-	T1(0,3) = -.5f*(eB0.x()+eB1.x());
-	T1(1,3) = -.5f*(eB0.y()+eB1.y());
-	Matrix4f T2 = Matrix4f::Identity(); 
-	T2(0,3) = .5f*(eA0.x()+eA1.x());
-	T2(1,3) = .5f*(eA0.y()+eA1.y());
-
-	b.transform = T2*R*T1;
-
-	Vector4f asdf = T2*R*T1*Vector4f(eB0.x(), eB0.y(), 0, 1);
-	Vector4f asdf2 = T2*R*T1*Vector4f(eB1.x(), eB1.y(), 0, 1);
-	Vector4f dif = asdf2-asdf;
-
-	// Update puzzle info
-	m_AddedPuzzlePieces.push_back(&b);
-	m_NotAddedPuzzlePieces.erase(m_NotAddedPuzzlePieces.begin()+best.j);
-	a.edgeCovered[best.k] = 1;
-	b.edgeCovered[best.l] = 1;
-
 	delete[] measures;
 }
 
@@ -1036,15 +986,52 @@ float JPuzzle::CompareEdgesByShape(PuzzlePiece & a, PuzzlePiece & b, int k, int 
 
 	int offset = (longProjectedPoints->size()-shortProjectedPoints->size())/2;
 	float measure = Compare(offset)/shortProjectedPoints->size();
-
-	if (k==3 && l == 1) {
-		int a=0;
-	}
-	if (k==2 && l == 0) {
-		int a=0;
-	}
-
+	
 	return measure;
+}
+
+float JPuzzle::CompareEdgesByColor(PuzzlePiece & a, PuzzlePiece & b, int k, int l)
+{
+	/* Compare by histogram */
+	//std::vector<Color> edgeColors[4][m_MaxColorLayers];
+	std::ofstream out1("out1.txt");
+	std::ofstream out2("out2.txt");
+
+	int layerIndex = 3;
+	const int nBuckets = 64;
+	const int bucketSize = 256/nBuckets; 
+	Vector3f bucketsA[nBuckets]; memset(bucketsA, 0, sizeof(Vector3f)*nBuckets);
+	Vector3f bucketsB[nBuckets]; memset(bucketsB, 0, sizeof(Vector3f)*nBuckets);
+	std::vector<Color> & colorsA = a.edgeColors[k][layerIndex];
+	std::vector<Color> & colorsB = b.edgeColors[l][layerIndex];
+
+	float incr=1./colorsA.size();
+	for (int i=0; i<colorsA.size(); i++) {
+		//out1 << colorsA[i].x << ' ' << colorsA[i].y << ' ' << colorsA[i].z << std::endl;
+		bucketsA[((int)colorsA[i].x)%nBuckets].x() += incr;
+		bucketsA[((int)colorsA[i].y)%nBuckets].y() += incr;
+		bucketsA[((int)colorsA[i].z)%nBuckets].z() += incr;
+	}
+	incr = 1./colorsB.size(); //reverse color B
+	for (int i=0, end=colorsB.size(); i<end; i++) {
+		//out2 << colorsB[end-i-1].x << ' ' << colorsB[end-i-1].y << ' ' << colorsB[end-i-1].z << std::endl;
+		bucketsB[((int)colorsB[i].x)%nBuckets].x() += incr;
+		bucketsB[((int)colorsB[i].y)%nBuckets].y() += incr;
+		bucketsB[((int)colorsB[i].z)%nBuckets].z() += incr;
+	}
+
+	Vector3f measure=Vector3f(0,0,0);
+	for (int i=0; i<nBuckets; i++) {
+		out1 << bucketsA[i].x() << ' ' << bucketsA[i].y() << ' ' << bucketsA[i].z() << std::endl;
+		out2 << bucketsB[i].x() << ' ' << bucketsB[i].y() << ' ' << bucketsB[i].z() << std::endl;
+		measure.x() += (bucketsA[i].x() - bucketsB[i].x())*(bucketsA[i].x() - bucketsB[i].x());
+		measure.y() += (bucketsA[i].y() - bucketsB[i].y())*(bucketsA[i].y() - bucketsB[i].y());
+		measure.z() += (bucketsA[i].z() - bucketsB[i].z())*(bucketsA[i].z() - bucketsB[i].z());
+	}
+
+	if (k==2 && l==0)
+		int a=0;
+	return measure.norm();
 }
 
 void JPuzzle::Render(ID3D10Device * pDevice)
@@ -1104,10 +1091,10 @@ void JPuzzle::Destroy()
     if(m_pEffect) m_pEffect->Release();
 }
 
-void JPuzzle::MovePiece(Measure & measure)
+void JPuzzle::MovePiece(EdgeLinkInfo & measure)
 {
         /* Align the pieces */
-        Measure & best = measure;
+        EdgeLinkInfo & best = measure;
         PuzzlePiece & a = *best.a;
         PuzzlePiece & b = *best.b;
         Vector4f eA0(2.f*(a.endPoints[best.k].x() / g_TextureSize) - 1, -2.f*(a.endPoints[best.k].y() / g_TextureSize) + 1, 1, 1); eA0 = a.transform*eA0;
