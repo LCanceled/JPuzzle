@@ -156,7 +156,7 @@ HRESULT InitDevice()
     vp.TopLeftY = 0;
     g_pd3dDevice->RSSetViewports( 1, &vp );
 
-    return jPuzzle.Init("puzzle2",20, g_pd3dDevice);
+    return jPuzzle.Init("puzzle3",40, g_pd3dDevice);
 }
 
 void CleanupDevice()

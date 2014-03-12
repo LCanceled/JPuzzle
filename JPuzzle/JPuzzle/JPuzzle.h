@@ -82,7 +82,7 @@ struct Texture {
 
 class JPuzzle {
 private:
-	static const int m_MaxColorLayers=5;
+	static const int m_MaxColorLayers=6;
 
 	struct EdgePoint {
 		Vector2f pos;
@@ -92,6 +92,7 @@ private:
 	struct PuzzlePiece {
 		PuzzlePiece():isBorderPiece(0) {memset(edgeCovered, 0, 4); memset(edgeIsBorder, 0, 4); }
 		Matrix4f transform;
+		Matrix4f rotation;
 		Vector2f endPoints[4];
 		Vector2f edgeNor[4];
 
@@ -104,6 +105,7 @@ private:
 		bool edgeIsBorder[4];
 		float totalCurvature[4];
 		float totalLength[4];
+		PuzzlePiece * adjPieces[4];
 
 		std::vector<int> borders(){
 			std::vector<int> borders;
@@ -167,6 +169,9 @@ private:
 		int l;
 	};
 
+	/* Temporary Memory */
+	Color * m_LeftColors[2];
+	Color * m_RightColors[2];
 
 	/* Puzzle graphics */
 	ID3D10Effect*                       m_pEffect;
@@ -194,7 +199,20 @@ private:
 	void AddPiece();
 	float CompareEdgesByShape(PuzzlePiece & a, PuzzlePiece & b, int k, int l);
 	float CompareEdgesByColor(PuzzlePiece & a, PuzzlePiece & b, int k, int l);
-	float MGC(std::vector<Color> left[2], std::vector<Color> right[2]);
+	float MGC(Color ** left, Color ** right, int leftSize, int rightSize);
+	
+	struct Pocket{
+		PuzzlePiece* a;
+		PuzzlePiece* b;
+		int k;
+		int l;
+		PuzzlePiece* bestMatch;
+		int mk;
+		int j;
+		float measure;
+    };
+	std::vector<Pocket> FindPockets();
+	void MatchPocket(std::vector<Pocket> pockets);
 public:
 	JPuzzle();
 	~JPuzzle() {}

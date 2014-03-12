@@ -10,6 +10,11 @@
 
 JPuzzle::JPuzzle():m_pEffect(0), m_pTechnique(0), m_pVertexLayout(0), m_pVBQuad(0), m_pIBQuad(0), m_pSRVPuzzleTextureFx(0), m_pWorldfx(0), m_nPiecesAdded(0)
 {
+	int size = 1024;
+	m_LeftColors[0] = new Color[size];
+	m_LeftColors[1] = new Color[size];
+	m_RightColors[0] = new Color[size];
+	m_RightColors[1] = new Color[size];
 }
 
 HRESULT JPuzzle::CreateGraphics(ID3D10Device * pDevice)
@@ -784,7 +789,7 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 void JPuzzle::AddPiece()
 {
 	//border pieces
-	if (0) {//m_nPiecesAdded == 1) {
+	if (m_nPiecesAdded == 1) {
 		std::vector<std::vector<float> > assignMatrix;
 		std::vector<PuzzlePiece*> borderPieces;
 		//MatrixXf mat;
@@ -803,7 +808,7 @@ void JPuzzle::AddPiece()
 			for (std::vector<PuzzlePiece*>::iterator it_c = borderPieces.begin(); it_c != borderPieces.end(); ++it_c) {
 				int leftIdx = (*it_r)->left();
 				int rightIdx = (*it_c)->right();
-				if(CompareEdgesByShape(**it_c, **it_r, rightIdx, leftIdx) < 14)
+				if(CompareEdgesByShape(**it_c, **it_r, rightIdx, leftIdx) < 3)
 					row.push_back(CompareEdgesByColor(**it_c, **it_r, rightIdx, leftIdx));
 				else
 					row.push_back(100000);
@@ -917,18 +922,18 @@ void JPuzzle::AddPiece()
 			if(++it_left != assignment.end()){
 				measure.a = borderPieces[*(--it_left)];
 				measure.b = borderPieces[*(++it_left)];
-			measure.k = (measure.a)->left();
-			measure.l = (measure.b)->right();
+				measure.k = (measure.a)->left();
+				measure.l = (measure.b)->right();			
 				//float measure;
-			for (int i = 0; i < m_NotAddedPuzzlePieces.size(); ++i){
-				if (measure.b == m_NotAddedPuzzlePieces[i]){
-					measure.j = i;
-					break;
+				for (int i = 0; i < m_NotAddedPuzzlePieces.size(); ++i){
+					if (measure.b == m_NotAddedPuzzlePieces[i]){
+						measure.j = i;
+						break;
+					}
 				}
+				MovePiece(measure);
+				m_nPiecesAdded++;
 			}
-			MovePiece(measure);
-			m_nPiecesAdded++;
-		}
 			if(it_left == assignment.end())
 				--it_left;
 			if(it_right != assignment.begin()){
@@ -941,7 +946,7 @@ void JPuzzle::AddPiece()
 					if (measure.b == m_NotAddedPuzzlePieces[i]){
 						measure.j = i;
 						break;
-	}
+					}
 				}
 				MovePiece(measure);
 				m_nPiecesAdded++;
@@ -953,6 +958,7 @@ void JPuzzle::AddPiece()
 	else if (m_nPiecesAdded+1 <= m_nPuzzlePieces) {
 		m_nPiecesAdded++;
 		ComparePieces();
+		//MatchPocket(FindPockets());
 		Sleep(150);
 	}
 }
@@ -974,24 +980,50 @@ void JPuzzle::ComparePieces()
 			for (int k=0; k<4; k++) {
 				for (int l=0; l<4; l++) {
 					if (!m_AddedPuzzlePieces[i]->edgeCovered[k] && !m_NotAddedPuzzlePieces[j]->edgeCovered[l]) {
-						//float dist = abs((m_AddedPuzzlePieces[i]->endPoints[k]-m_AddedPuzzlePieces[i]->endPoints[(k+1)%4]).norm()
-						//	- (m_NotAddedPuzzlePieces[j]->endPoints[l]-m_NotAddedPuzzlePieces[j]->endPoints[(l+1)%4]).norm());
-						//if (dist < 12) {
+						float dist = abs((m_AddedPuzzlePieces[i]->endPoints[k]-m_AddedPuzzlePieces[i]->endPoints[(k+1)%4]).norm()
+							- (m_NotAddedPuzzlePieces[j]->endPoints[l]-m_NotAddedPuzzlePieces[j]->endPoints[(l+1)%4]).norm());
+						if (dist < 12) {
 							//measures[nMeasures].measure = CompareEdgesByShape(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
-							measures[nMeasures].measure = CompareEdgesByColor(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
-							//measures[nMeasures].measure = dist+CompareEdgesByShape(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
+							//measures[nMeasures].measure = CompareEdgesByColor(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
+							measures[nMeasures].measure = dist+CompareEdgesByShape(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
 							measures[nMeasures].a = m_AddedPuzzlePieces[i];
 							measures[nMeasures].b = m_NotAddedPuzzlePieces[j];
 							measures[nMeasures].j = j;
 							measures[nMeasures].k = k;
 							measures[nMeasures++].l = l;
-						//}
 						}
 					}
 				}
 			}
 		}
+	}
 	qsort(measures, nMeasures, sizeof(EdgeLinkInfo), CompareEdgeMeasures);
+	float maxShapeMeasure = measures[nMeasures-1].measure;
+
+	// Compare by Color
+	//std::ofstream out7("out7.txt", std::ofstream::out | std::ofstream::trunc);
+	//char buf[256];
+	//sprintf(buf, "\n%i\n", nMeasures);
+	//OutputDebugStringA(buf);
+	int count=0;
+	for (int i=0; i<nMeasures; i++) {
+		if (measures[i].measure < 3) count++;
+		//out7 << measures[i].measure << std::endl;
+	}
+
+	int nNewMeasures = min(count, nMeasures);
+	for (int i=0; i<nNewMeasures; i++) {
+		measures[i].measure = CompareEdgesByColor(*measures[i].a, *measures[i].b, measures[i].k, measures[i].l);
+	}
+	qsort(measures, nNewMeasures, sizeof(EdgeLinkInfo), CompareEdgeMeasures);
+	float maxColorMeasure = measures[nNewMeasures-1].measure;
+
+	for (int i=0; i<nMeasures; i++) {
+		//if (i < nNewMeasures)
+		//	out7 << measures[i].measure*(maxShapeMeasure/maxColorMeasure) << std::endl;
+		//else out7 << 0 << std::endl;
+	}
+	//out7.close();
 
 	MovePiece(measures[0]);
 
@@ -1034,51 +1066,73 @@ float JPuzzle::CompareEdgesByShape(PuzzlePiece & a, PuzzlePiece & b, int k, int 
 	return measure;
 }
 
-/*
-float JPuzzle::CompareEdgesByColor(PuzzlePiece & a, PuzzlePiece & b, int k, int l)
+
+float JPuzzle::CompareEdgesByColor(PuzzlePiece & a, PuzzlePiece & b, int k, int l) 
 {
-	/* Compare by histogram 
-	//std::vector<Color> edgeColors[4][m_MaxColorLayers];
-	std::ofstream out1("out1.txt");
-	std::ofstream out2("out2.txt");
+	//std::ofstream out1("out1.txt");
+	//std::ofstream out2("out2.txt");
 
-	int layerIndex = 3;
-	const int nBuckets = 64;
-	const int bucketSize = 256/nBuckets; 
-	Vector3f bucketsA[nBuckets]; memset(bucketsA, 0, sizeof(Vector3f)*nBuckets);
-	Vector3f bucketsB[nBuckets]; memset(bucketsB, 0, sizeof(Vector3f)*nBuckets);
-	std::vector<Color> & colorsA = a.edgeColors[k][layerIndex];
-	std::vector<Color> & colorsB = b.edgeColors[l][layerIndex];
-
-	float incr=1./colorsA.size();
-	for (int i=0; i<colorsA.size(); i++) {
-		//out1 << colorsA[i].x << ' ' << colorsA[i].y << ' ' << colorsA[i].z << std::endl;
-		bucketsA[((int)colorsA[i].x)%nBuckets].x() += incr;
-		bucketsA[((int)colorsA[i].y)%nBuckets].y() += incr;
-		bucketsA[((int)colorsA[i].z)%nBuckets].z() += incr;
+	int layerIndex=3;
+	int minSize = a.edgeColors[k][layerIndex+1].size();
+	if (b.edgeColors[l][layerIndex+1].size() < minSize) {
+		minSize = b.edgeColors[l][layerIndex+1].size();
 	}
-	incr = 1./colorsB.size(); //reverse color B
-	for (int i=0, end=colorsB.size(); i<end; i++) {
-		//out2 << colorsB[end-i-1].x << ' ' << colorsB[end-i-1].y << ' ' << colorsB[end-i-1].z << std::endl;
-		bucketsB[((int)colorsB[i].x)%nBuckets].x() += incr;
-		bucketsB[((int)colorsB[i].y)%nBuckets].y() += incr;
-		bucketsB[((int)colorsB[i].z)%nBuckets].z() += incr;
+	
+	float measure=0;
+	auto ExtractLeftRightColors = [minSize,k,l,&a,&b] (int layerIndex, Color * leftColors, Color * rightColors) {
+		int offsetA=a.edgeColors[k][layerIndex].size()-minSize;
+		int offsetB=b.edgeColors[l][layerIndex].size()-minSize;
+		for (int i=0; i<minSize; i++) {
+			leftColors[i] = a.edgeColors[k][layerIndex][i+offsetA];
+			rightColors[i] = b.edgeColors[l][layerIndex][offsetB+(minSize-i-1)];
+			//leftColors[i] = a.edgeColors[k][layerIndex][i];
+			//rightColors[i] = b.edgeColors[l][layerIndex][b.edgeColors[l][layerIndex].size()-i-1];
+		}
+	};
+
+	if (minSize >= 1024)
+		DebugBreak();
+
+	ExtractLeftRightColors(layerIndex, m_LeftColors[1], m_RightColors[0]);
+	ExtractLeftRightColors(layerIndex+1, m_LeftColors[0], m_RightColors[1]);
+	measure = MGC(m_LeftColors, m_RightColors, minSize, minSize);//*/
+
+	//if (k==2 && l==0)
+	//	int a=0;
+
+	/*std::vector<Color> left[2];
+	std::vector<Color> right[2];
+	int minSize = a.edgeColors[k][m_MaxColorLayers-1].size();
+	if (b.edgeColors[l][m_MaxColorLayers-1].size() < minSize) {
+		minSize = b.edgeColors[l][m_MaxColorLayers-1].size();
 	}
 
-	Vector3f measure=Vector3f(0,0,0);
-	for (int i=0; i<nBuckets; i++) {
-		out1 << bucketsA[i].x() << ' ' << bucketsA[i].y() << ' ' << bucketsA[i].z() << std::endl;
-		out2 << bucketsB[i].x() << ' ' << bucketsB[i].y() << ' ' << bucketsB[i].z() << std::endl;
-		measure.x() += (bucketsA[i].x() - bucketsB[i].x())*(bucketsA[i].x() - bucketsB[i].x());
-		measure.y() += (bucketsA[i].y() - bucketsB[i].y())*(bucketsA[i].y() - bucketsB[i].y());
-		measure.z() += (bucketsA[i].z() - bucketsB[i].z())*(bucketsA[i].z() - bucketsB[i].z());
+	left[0] = std::vector<Color>(a.edgeColors[k][m_MaxColorLayers-1].begin(), a.edgeColors[k][m_MaxColorLayers-1].begin()+minSize);
+	left[1] = std::vector<Color>(a.edgeColors[k][(m_MaxColorLayers-2)].begin(), a.edgeColors[k][(m_MaxColorLayers-2)].begin() + minSize);
+
+	right[0] = std::vector<Color>();
+	right[1] = std::vector<Color>();
+
+	std::vector<Color>::iterator it_r0 = b.edgeColors[l][(m_MaxColorLayers-2)].end();
+	std::vector<Color>::iterator it_r1 = b.edgeColors[l][m_MaxColorLayers-1].end();
+
+	for(int i=0; i<minSize; ++i){
+		right[0].push_back(*(--it_r0));
+		right[1].push_back(*(--it_r1));
 	}
 
-	if (k==2 && l==0)
-		int a=0;
-	return measure.norm();
+	Color * leftColors[2];
+	Color * rightColors[2];
+	leftColors[0] = left[0].data();
+	leftColors[1] = left[1].data();
+	rightColors[0] = right[0].data();
+	rightColors[1] = right[1].data();
+	float measure = MGC(leftColors, rightColors, minSize, minSize);//*/
+
+	return measure;
+
 }
-*/
+
 void JPuzzle::Render(ID3D10Device * pDevice)
 {
 	if (GetAsyncKeyState(VK_RETURN))
@@ -1157,6 +1211,8 @@ void JPuzzle::MovePiece(EdgeLinkInfo & measure)
         if (dot > 1) dot = 1;
         float theta = acos(dot);
         if (cr < 0) theta = -theta;
+		float unitTheta = round(theta/(D3DX_PI/2.f));
+		theta = unitTheta*D3DX_PI/2.f;
         Matrix3f rot; rot = AngleAxisf(theta, Vector3f::UnitZ());
         Vector3f rotatedaasdf = rot*Vector3f(vB[0], vB[1], 0);
 
@@ -1172,6 +1228,7 @@ void JPuzzle::MovePiece(EdgeLinkInfo & measure)
         T2(1, 3) = .5f*(eA0.y() + eA1.y());
 
         b.transform = T2*R*T1;
+		b.rotation = R;
 
         Vector4f asdf = T2*R*T1*Vector4f(eB0.x(), eB0.y(), 0, 1);
         Vector4f asdf2 = T2*R*T1*Vector4f(eB1.x(), eB1.y(), 0, 1);
@@ -1184,88 +1241,22 @@ void JPuzzle::MovePiece(EdgeLinkInfo & measure)
         b.edgeCovered[best.l] = 1;
 }
 
-float JPuzzle::CompareEdgesByColor(PuzzlePiece & a, PuzzlePiece & b, int k, int l) 
+MatrixXd dummyCov(MatrixXd& mat, Vector3d& mu) 
 {
-	//std::ofstream out1("out1.txt");
-	//std::ofstream out2("out2.txt");
+	int rows = mat.rows();
+	MatrixXd M(rows + 9, 3);
+	M << mat, 0, 0, 0, 1, 1, 1, -1, -1, -1, 0, 0, 1, 0, 1, 0, 1, 0, 0, -1, 0, 0, 0, -1, 0, 0, 0, -1;
+	VectorXd ones;
+	ones.setOnes(rows + 9);
 
-	float measure=0;
-	auto ExtractLeftRightColors = [&] (int layerIndex, std::vector<Color> & leftColors, std::vector<Color> & rightColors) {
-		std::vector<Color> * longColors;
-		std::vector<Color> * shortColors;
+	Matrix3d S = 1.0 / (rows - 1)*(M - ones*mu.transpose()).transpose()*(M - ones*mu.transpose());
 
-		if (a.edgeColors[k][layerIndex].size() > b.edgeColors[l][layerIndex].size()) {
-			longColors = &a.edgeColors[k][layerIndex], shortColors = &b.edgeColors[l][layerIndex];
-		} else {
-			shortColors = &a.edgeColors[k][layerIndex], longColors = &b.edgeColors[l][layerIndex];
-		}
-
-		int offset=(longColors->size()-shortColors->size())/2;
-
-		leftColors.resize(shortColors->size());
-		rightColors.resize(shortColors->size());
-		for (int i=0, end=shortColors->size(); i<end; i++) {
-			leftColors[i] = (*shortColors)[end-i-1];
-			rightColors[i] = (*longColors)[i+offset];
-			//Vector3f sC((*shortColors)[end-i-1]);
-			//Vector3f lC((*longColors)[i+offset]);
-			//measure += (sC-lC).norm();
-			//out1 << sC.x() << ' ' << sC.y() << ' ' << sC.z() << std::endl;
-			//out2 << lC.x() << ' ' << lC.y() << ' ' << lC.z() << std::endl;
-		}
-	};
-
-	std::vector<Color> leftColors[2];
-	std::vector<Color> rightColors[2];
-	ExtractLeftRightColors(2, leftColors[1], rightColors[0]);
-	ExtractLeftRightColors(3, leftColors[0], rightColors[1]);
-	measure = MGC(leftColors, rightColors);
-
-	if (k==2 && l==0)
-		int a=0;
-
-	/*if (a.projectedPoints[k].size() > b.projectedPoints[l].size()) {
-		longProjectedPoints = &a.projectedPoints[k], shortProjectedPoints = &b.projectedPoints[l];
-	}
-	else {
-		shortProjectedPoints = &a.projectedPoints[k], longProjectedPoints = &b.projectedPoints[l];
-	}*/
-
-	/*int layerIndex = 3;
-	std::vector<Color> left[2];
-	std::vector<Color> right[2];
-	int min_size = a.edgeColors[k][layerIndex].size();
-	if (b.edgeColors[l][layerIndex].size() < min_size) {
-		min_size = b.edgeColors[l][layerIndex].size();
-	}
-
-	left[0] = std::vector<Color>(a.edgeColors[k][layerIndex].begin(), a.edgeColors[k][m_MaxColorLayers-1].begin()+min_size);
-	left[1] = std::vector<Color>(a.edgeColors[k][layerIndex].begin(), a.edgeColors[k][(m_MaxColorLayers-1)/2].begin() + min_size);
-	right[0] = std::vector<Color>(b.edgeColors[l][layerIndex].begin(), b.edgeColors[l][(m_MaxColorLayers-1)/2].begin() + min_size);
-	right[1] = std::vector<Color>(b.edgeColors[l][layerIndex].begin(), b.edgeColors[l][m_MaxColorLayers-1].begin() + min_size);
-
-	float measure = MGC(left, right);*/
-
-	return measure;
-
+	return S.inverse();
 }
 
-MatrixXd dummyCov(MatrixXd& mat, Vector3d& mu) {
-			int rows = mat.rows();
-			MatrixXd M(rows + 9, 3);
-			M << mat, 0, 0, 0, 1, 1, 1, -1, -1, -1, 0, 0, 1, 0, 1, 0, 1, 0, 0, -1, 0, 0, 0, -1, 0, 0, 0, -1;
-			VectorXd ones;
-			ones.setOnes(rows + 9);
-
-			Matrix3d S = 1.0 / (rows - 1)*(M - ones*mu.transpose()).transpose()*(M - ones*mu.transpose());
-
-			return S.inverse();
-}
-
-float JPuzzle::MGC(std::vector<Color> left[2], std::vector<Color> right[2]) {
+float JPuzzle::MGC(Color ** left, Color ** right, int leftSize, int rightSize) {
 	
-	int rows = left[0].size();
-	left[1].size();
+	int rows = leftSize;
 
 	MatrixXd GL(rows, 3), GR(rows, 3), GijLR(rows, 3), GjiRL(rows, 3);
 	Vector3d uiL(0.0, 0.0, 0.0);
@@ -1295,8 +1286,6 @@ float JPuzzle::MGC(std::vector<Color> left[2], std::vector<Color> right[2]) {
 	VectorXd ones;
 	ones.setOnes(rows);
 
-	
-
 	MatrixXd SiLpinv = dummyCov(GL, uiL);//pinv(SiL);
 	MatrixXd SjRpinv = dummyCov(GR, ujR);//pinv(SjR);
 
@@ -1311,4 +1300,105 @@ float JPuzzle::MGC(std::vector<Color> left[2], std::vector<Color> right[2]) {
 		DRL += XRL.row(r)*SjRpinv*XRL.row(r).transpose();
 	}
 	return sqrt(DLR) + sqrt(DRL);
+}
+
+std::vector<JPuzzle::Pocket> JPuzzle::FindPockets(){
+	//find uncovered edges from added pieces
+	//find two edges sharing one endpoint and almost perpendicular
+	//return Pockets
+	std::vector<Pocket> pockets;
+	return pockets;
+}
+void JPuzzle::MatchPocket(std::vector<Pocket> pockets) {
+	//iterate through all the pockets and find the one with the best "confidence"
+	EdgeLinkInfo bestPocket;
+	bestPocket.measure = INFINITY;
+	for(std::vector<Pocket>::iterator p_it = pockets.begin(); p_it != pockets.end(); ++p_it) {
+		 PuzzlePiece* bestMatch;
+		 std::vector<float> sim1;
+		 std::vector<float> sim2;
+		 for (std::vector<PuzzlePiece*>::iterator it = m_NotAddedPuzzlePieces.begin(); it != m_NotAddedPuzzlePieces.end(); ++it) {
+			 //TODO:Shape????
+			 //orientation 1
+				sim1.push_back(CompareEdgesByColor(*(p_it->a), **it, p_it->k, 0));
+				sim2.push_back(CompareEdgesByColor(*(p_it->b), **it, p_it->l, 1));
+				//orientation 2
+				sim1.push_back(CompareEdgesByColor(*(p_it->a), **it, p_it->k, 1));
+				sim2.push_back(CompareEdgesByColor(*(p_it->b), **it, p_it->l, 2));
+				//orientation 3
+				sim1.push_back(CompareEdgesByColor(*(p_it->a), **it, p_it->k, 2));
+				sim2.push_back(CompareEdgesByColor(*(p_it->b), **it, p_it->l, 3));
+				//orientation 4
+				sim1.push_back(CompareEdgesByColor(*(p_it->a), **it, p_it->k, 3));
+				sim2.push_back(CompareEdgesByColor(*(p_it->b), **it, p_it->l, 0));
+
+                //sim = simL + simT - alpha*sqrt(simL*simL+simT*simT-(simL+simT)*(simL+simT)/4.0);
+                //cout << sim << endl;
+		 }
+        float max[2]={INFINITY,INFINITY}, second_max[2]={INFINITY,INFINITY};
+        for(int k=0; k<sim1.size(); k++){
+            if(sim1[k]<max[0]){
+                second_max[0] = max[0];
+                max[0] = sim1[k];
+            }
+            else if(sim1[k]<second_max[0]){
+                second_max[0] = sim1[k];
+            }
+
+            if(sim2[k]<max[1]){
+                second_max[1] = max[1];
+                max[1] = sim2[k];
+            }
+            else if(sim2[k]<second_max[1]){
+                second_max[1] = sim2[k];
+            }
+        }
+        float sim = INFINITY;
+        /*if(sim1.size()==1){
+            Pocket p;
+            p.best_fit = *(pool.begin());
+            p.i = i;
+            p.j = j;
+            //p.best_fit_it = pool.begin();
+            p.sim = 2.0;
+            p.p = type;
+            
+            return p;
+        }*/
+        int max_idx = -1;
+        for(int k=0; k<sim1.size(); k++){
+            float s1=0;
+            if(sim1[k])
+                s1 = sim1[k]/second_max[0];
+            float s2 = 0;
+            if(sim2[k])
+                s2 = sim2[k]/second_max[1];
+			float alpha = 1.f;
+            float s = s1 + s2 + alpha*sqrt(s1*s1+s2*s2-(s1+s2)*(s1+s2)/4.f);
+     
+            //waitKey(0);
+            if(s < sim){
+                sim = s;
+                max_idx = k;
+            }
+        }
+		if(sim < bestPocket.measure) {
+			int pidx = max_idx/4;
+			int orientation = max_idx%4;
+			std::vector<PuzzlePiece*>::iterator it = m_NotAddedPuzzlePieces.begin();
+			std::advance(it, max_idx);
+			bestPocket.a = p_it->a;
+			bestPocket.b = *it;
+			bestPocket.k = p_it->k;
+			bestPocket.l = orientation;
+			bestPocket.j = max_idx;
+			bestPocket.measure = sim;
+		}
+        //result[i*m+j] = *it;
+        //cout << max_idx << endl;
+	}
+	MovePiece(bestPocket);
+	//move the piece
+	//add the piece
+	//book keeping
 }
