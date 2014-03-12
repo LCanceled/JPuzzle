@@ -41,6 +41,9 @@ struct Color {
 			return w;
 		}
 	}
+	operator Vector3f() {
+		return Vector3f(x,y,z);
+	}
 };
 
 struct Texture {
@@ -79,7 +82,7 @@ struct Texture {
 
 class JPuzzle {
 private:
-	static const int m_MaxColorLayers=4;
+	static const int m_MaxColorLayers=5;
 
 	struct EdgePoint {
 		Vector2f pos;

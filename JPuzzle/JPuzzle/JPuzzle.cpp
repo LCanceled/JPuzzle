@@ -913,7 +913,7 @@ void JPuzzle::AddPiece()
 		std::list<int>::iterator it_left = it;
 		std::list<int>::iterator it_right = it;
 		while (m_nPiecesAdded < borderPieces.size()){
-			Measure measure;
+			EdgeLinkInfo measure;
 			if(++it_left != assignment.end()){
 				measure.a = borderPieces[*(--it_left)];
 				measure.b = borderPieces[*(++it_left)];
@@ -1034,9 +1034,10 @@ float JPuzzle::CompareEdgesByShape(PuzzlePiece & a, PuzzlePiece & b, int k, int 
 	return measure;
 }
 
+/*
 float JPuzzle::CompareEdgesByColor(PuzzlePiece & a, PuzzlePiece & b, int k, int l)
 {
-	/* Compare by histogram */
+	/* Compare by histogram 
 	//std::vector<Color> edgeColors[4][m_MaxColorLayers];
 	std::ofstream out1("out1.txt");
 	std::ofstream out2("out2.txt");
@@ -1077,7 +1078,7 @@ float JPuzzle::CompareEdgesByColor(PuzzlePiece & a, PuzzlePiece & b, int k, int 
 		int a=0;
 	return measure.norm();
 }
-
+*/
 void JPuzzle::Render(ID3D10Device * pDevice)
 {
 	if (GetAsyncKeyState(VK_RETURN))
@@ -1086,8 +1087,8 @@ void JPuzzle::Render(ID3D10Device * pDevice)
 	m_World = Matrix4f::Identity();
 	static float scale = 1.;
 	static Vector2f trans;
-	const float scaleAmount = .01;
-	const float transAmount = .01/scale;
+	const float scaleAmount = .001;
+	const float transAmount = .001/scale;
 	if (GetAsyncKeyState(VK_LBUTTON)) {
 		scale += scaleAmount;
 	} else if (GetAsyncKeyState(VK_RBUTTON)) {
@@ -1183,15 +1184,45 @@ void JPuzzle::MovePiece(EdgeLinkInfo & measure)
         b.edgeCovered[best.l] = 1;
 }
 
-float JPuzzle::CompareEdgesByColor(PuzzlePiece & a, PuzzlePiece & b, int k, int l) {
+float JPuzzle::CompareEdgesByColor(PuzzlePiece & a, PuzzlePiece & b, int k, int l) 
+{
+	//std::ofstream out1("out1.txt");
+	//std::ofstream out2("out2.txt");
 
+	float measure=0;
+	auto ExtractLeftRightColors = [&] (int layerIndex, std::vector<Color> & leftColors, std::vector<Color> & rightColors) {
+		std::vector<Color> * longColors;
+		std::vector<Color> * shortColors;
 
-	std::vector<Color> left[2];
-	std::vector<Color> right[2];
-	int min_size = a.edgeColors[k][m_MaxEdgeInsets-1].size();
-	if (b.edgeColors[l][m_MaxEdgeInsets-1].size() < min_size) {
-		min_size = b.edgeColors[l][m_MaxEdgeInsets-1].size();
-	}
+		if (a.edgeColors[k][layerIndex].size() > b.edgeColors[l][layerIndex].size()) {
+			longColors = &a.edgeColors[k][layerIndex], shortColors = &b.edgeColors[l][layerIndex];
+		} else {
+			shortColors = &a.edgeColors[k][layerIndex], longColors = &b.edgeColors[l][layerIndex];
+		}
+
+		int offset=(longColors->size()-shortColors->size())/2;
+
+		leftColors.resize(shortColors->size());
+		rightColors.resize(shortColors->size());
+		for (int i=0, end=shortColors->size(); i<end; i++) {
+			leftColors[i] = (*shortColors)[end-i-1];
+			rightColors[i] = (*longColors)[i+offset];
+			//Vector3f sC((*shortColors)[end-i-1]);
+			//Vector3f lC((*longColors)[i+offset]);
+			//measure += (sC-lC).norm();
+			//out1 << sC.x() << ' ' << sC.y() << ' ' << sC.z() << std::endl;
+			//out2 << lC.x() << ' ' << lC.y() << ' ' << lC.z() << std::endl;
+		}
+	};
+
+	std::vector<Color> leftColors[2];
+	std::vector<Color> rightColors[2];
+	ExtractLeftRightColors(2, leftColors[1], rightColors[0]);
+	ExtractLeftRightColors(3, leftColors[0], rightColors[1]);
+	measure = MGC(leftColors, rightColors);
+
+	if (k==2 && l==0)
+		int a=0;
 
 	/*if (a.projectedPoints[k].size() > b.projectedPoints[l].size()) {
 		longProjectedPoints = &a.projectedPoints[k], shortProjectedPoints = &b.projectedPoints[l];
@@ -1199,35 +1230,21 @@ float JPuzzle::CompareEdgesByColor(PuzzlePiece & a, PuzzlePiece & b, int k, int 
 	else {
 		shortProjectedPoints = &a.projectedPoints[k], longProjectedPoints = &b.projectedPoints[l];
 	}*/
-	left[0] = std::vector<Color>(a.edgeColors[k][m_MaxEdgeInsets-1].begin(), a.edgeColors[k][m_MaxEdgeInsets-1].begin()+min_size);
-	left[1] = std::vector<Color>(a.edgeColors[k][(m_MaxEdgeInsets-1)/2].begin(), a.edgeColors[k][(m_MaxEdgeInsets-1)/2].begin() + min_size);
-	right[0] = std::vector<Color>(b.edgeColors[l][(m_MaxEdgeInsets-1)/2].begin(), b.edgeColors[l][(m_MaxEdgeInsets-1)/2].begin() + min_size);
-	right[1] = std::vector<Color>(b.edgeColors[l][m_MaxEdgeInsets-1].begin(), b.edgeColors[l][m_MaxEdgeInsets-1].begin() + min_size);
 
-	//left[0] = std::vector<Color>(a.edgeColors[k][3].begin(), a.edgeColors[k][3].end());
-	//left[1] = std::vector<Color>(a.edgeColors[k][2].begin(), a.edgeColors[k][2].end());
-	//right[0] = std::vector<Color>(b.edgeColors[l][2].begin(), b.edgeColors[l][2].end());
-	//right[1] = std::vector<Color>(b.edgeColors[l][3].begin(), b.edgeColors[l][3].end());
-	/*Color sum1, sum2;
-	for (int i = 0; i < a.edgeColors[k][2].size(); i++){
-		sum1.x = sum1.x + a.edgeColors[k][2][i].x;
-		sum1.y = sum1.y + a.edgeColors[k][2][i].y;
-		sum1.z = sum1.z + a.edgeColors[k][2][i].z;
+	/*int layerIndex = 3;
+	std::vector<Color> left[2];
+	std::vector<Color> right[2];
+	int min_size = a.edgeColors[k][layerIndex].size();
+	if (b.edgeColors[l][layerIndex].size() < min_size) {
+		min_size = b.edgeColors[l][layerIndex].size();
 	}
-	sum1.x = sum1.x / a.edgeColors[k][2].size();
-	sum1.y = sum1.y / a.edgeColors[k][2].size();
-	sum1.z = sum1.z / a.edgeColors[k][2].size();
-	for (int i = 0; i < b.edgeColors[l][2].size(); i++){
-		sum2.x = sum2.x + b.edgeColors[l][2][i].x;
-		sum2.y = sum2.y + b.edgeColors[l][2][i].y;
-		sum2.z = sum2.z + b.edgeColors[l][2][i].z;
-	}
-	sum2.x = sum2.x / b.edgeColors[l][2].size();
-	sum2.y = sum2.y / b.edgeColors[l][2].size();
-	sum2.z = sum2.z / b.edgeColors[l][2].size();
-	return (sum1.x - sum2.x)*(sum1.x - sum2.x) + (sum1.y - sum2.y)*(sum1.y - sum2.y) + (sum1.z - sum2.z)*(sum1.z - sum2.z);*/
-	//int offset = (longProjectedPoints->size() - shortProjectedPoints->size()) / 2;
-	float measure = MGC(left, right);
+
+	left[0] = std::vector<Color>(a.edgeColors[k][layerIndex].begin(), a.edgeColors[k][m_MaxColorLayers-1].begin()+min_size);
+	left[1] = std::vector<Color>(a.edgeColors[k][layerIndex].begin(), a.edgeColors[k][(m_MaxColorLayers-1)/2].begin() + min_size);
+	right[0] = std::vector<Color>(b.edgeColors[l][layerIndex].begin(), b.edgeColors[l][(m_MaxColorLayers-1)/2].begin() + min_size);
+	right[1] = std::vector<Color>(b.edgeColors[l][layerIndex].begin(), b.edgeColors[l][m_MaxColorLayers-1].begin() + min_size);
+
+	float measure = MGC(left, right);*/
 
 	return measure;
 
