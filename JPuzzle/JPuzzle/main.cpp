@@ -144,7 +144,7 @@ HRESULT InitDevice()
     if( FAILED( hr ) )
         return hr;
 
-    g_pd3dDevice->OMSetRenderTargets( 1, &g_pRenderTargetView, NULL );
+    g_pd3dDevice->OMSetRenderTargets( 1, &g_pRenderTargetView, NULL);
 
     // Setup the viewport
     D3D10_VIEWPORT vp;
@@ -156,7 +156,7 @@ HRESULT InitDevice()
     vp.TopLeftY = 0;
     g_pd3dDevice->RSSetViewports(1, &vp );
 
-    return jPuzzle.Init("puzzle4",60, g_pd3dDevice);
+    return jPuzzle.Init("puzzle4",200, g_pd3dDevice);
 }
 
 void CleanupDevice()
@@ -194,7 +194,8 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam 
 
 void Render()
 {
-    float ClearColor[4] = { 0.8f, 0.8f, 0.8f, 1.0f };
+    //float ClearColor[4] = { 0.8f, 0.8f, 0.8f, 1.0f };
+	float ClearColor[4] = { 1.f, 1.f, 1.f, 1.0f };
     g_pd3dDevice->ClearRenderTargetView( g_pRenderTargetView, ClearColor);
 
 	jPuzzle.Render(g_pd3dDevice);

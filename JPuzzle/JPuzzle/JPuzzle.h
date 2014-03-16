@@ -82,15 +82,15 @@ struct Texture {
 
 class JPuzzle {
 private:
-	static const int m_MaxColorLayers=5;
-
+	static const int m_MaxColorLayers=4;
+	 
 	struct EdgePoint {
 		Vector2f pos;
 		float k;
 		float w;
 	};
 	struct PuzzlePiece {
-		PuzzlePiece():isBorderPiece(0) {memset(edgeCovered, 0, 4); memset(edgeIsBorder, 0, 4); }
+		PuzzlePiece():isAdded(0), isBorderPiece(0) {memset(edgeCovered, 0, 4); memset(edgeIsBorder, 0, 4); memset(adjPieces, 0, 4*sizeof(PuzzlePiece*)); }
 		Matrix4f transform;
 		Matrix4f rotation;
 		Vector2f endPoints[4];
@@ -100,6 +100,8 @@ private:
 		std::vector<Color> edgeColors[4][m_MaxColorLayers];
 		std::vector<float> projectedPoints[4];
 
+		int index;
+		bool isAdded;
 		bool isBorderPiece; 
 		bool edgeCovered[4];
 		bool edgeIsBorder[4];
@@ -164,7 +166,6 @@ private:
 		float measure;
 		PuzzlePiece * a;
 		PuzzlePiece * b;
-		int j;
 		int k;
 		int l;
 	};
@@ -197,8 +198,10 @@ private:
 	bool OnOutsideBoundary(int i, int j, Texture & tex);
 	bool OnBoundary(int i, int j, Texture & tex);
 	void AddPiece();
-	float CompareEdgesByShape(PuzzlePiece & a, PuzzlePiece & b, int k, int l);
-	float CompareEdgesByColor(PuzzlePiece & a, PuzzlePiece & b, int k, int l);
+	//float CompareEdgesByShape(PuzzlePiece & a, PuzzlePiece & b, int k, int l);
+	//float CompareEdgesByColor(PuzzlePiece & a, PuzzlePiece & b, int k, int l);
+	float CompareEdgesByShape(std::vector<EdgeLinkInfo> & links);
+	float CompareEdgesByColor(std::vector<EdgeLinkInfo> & links);
 	float MGC(Color ** left, Color ** right, int leftSize, int rightSize);
 	
 	struct Pocket{
@@ -212,7 +215,8 @@ private:
 		float measure;
     };
 	std::vector<Pocket> FindPockets();
-	void MatchPocket(std::vector<Pocket> pockets);
+	//void MatchPocket(std::vector<Pocket> pockets);
+	void FindNeighbors(PuzzlePiece & a, PuzzlePiece & b, int k, int l, std::vector<EdgeLinkInfo> & links);
 public:
 	JPuzzle();
 	~JPuzzle() {}

@@ -242,6 +242,7 @@ bool JPuzzle::ExtractPiece(Texture & tex, Texture & tmpTex, std::vector<Vector2f
 	D3D10_MAPPED_TEXTURE2D mappedTex;
 	pTexture->Map(D3D10CalcSubresource(0, 0, 1), D3D10_MAP_WRITE_DISCARD, 0, &mappedTex);
 	UCHAR* pTexels = (UCHAR*)mappedTex.pData;
+	float scale = 2;
 	for(UINT row = 0; row < g_TextureSize; row++ ) {
 		UINT rowStart = row * mappedTex.RowPitch;
 		for( UINT col = 0; col < g_TextureSize; col++ ) {
@@ -399,6 +400,7 @@ int CompareCurvature(const void * a, const void * b)
 void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device * pDevice)
 {
 	PuzzlePiece & piece = m_PuzzlePieces[m_nPuzzlePieces-1];
+	piece.index = m_nPuzzlePieces-1;
 	char buf[256];
 	sprintf(buf, "\n%i\n", m_nPuzzlePieces);
 	OutputDebugStringA(buf);
@@ -414,14 +416,14 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 	if (startX >= tex.width-1)
 		DebugBreak();
 
-	bool * used = new bool[tex.width*tex.height];
-	memset(used, 0, sizeof(bool)*tex.width*tex.height);
+	int * used = new int[tex.width*tex.height];
+	memset(used, 0, sizeof(int)*tex.width*tex.height);
 
-	D3D10_MAPPED_TEXTURE2D mappedTex;
+	/*D3D10_MAPPED_TEXTURE2D mappedTex;
 	ID3D10Texture2D * pTexture;
 	piece.SRVPuzzleTexture->GetResource((ID3D10Resource**)&pTexture);
 	pTexture->Map(D3D10CalcSubresource(0, 0, 1), D3D10_MAP_WRITE_DISCARD, 0, &mappedTex);
-	UCHAR* pTexels = (UCHAR*)mappedTex.pData;
+	UCHAR* pTexels = (UCHAR*)mappedTex.pData;*/
 	std::vector<Vector2f> pixelBoundaryPos;
 	//std::vector<Vector2f> boundaryPos;
 	std::vector<Vector2f> tmpBoundaryPos;
@@ -438,9 +440,9 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 			tmpBoundaryPos.push_back(Vector2f(j, i));
 		}
 		popped = 0;
-		used[tex.width*i + j] = 1;
+		used[tex.width*i + j] = pixelBoundaryPos.size()+1;
 
-		/*if (edgeInsetLevel == 1) {
+		/*if (edgeInsetLevel == 2) {
 			UINT rowStart = (int)pixelBoundaryPos.back().y() * mappedTex.RowPitch;
 			UINT colStart =  (int)pixelBoundaryPos.back().x() * 4;
 			pTexels[rowStart + colStart + 0] = 255*edgeInsetLevel;
@@ -476,8 +478,19 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 				break;
 
 			pixelBoundaryPos.pop_back();
-			if (pixelBoundaryPos.size() == 0) 
+			if (pixelBoundaryPos.size() == 0)  {
+				
+				for (int i=0; i<4; i++) {
+					int s = piece.edgeColors[i][edgeInsetLevel-1].size();
+					piece.edgeColors[i][edgeInsetLevel].resize(s);
+					memcpy(piece.edgeColors[i][edgeInsetLevel].data(), piece.edgeColors[i][edgeInsetLevel-1].data(), sizeof(Color)*s);
+				}
+				
+				delete[] used;
+				//pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
+				return;
 				DebugBreak();
+			}
 			y = (int)pixelBoundaryPos.back().y();
 			x = (int)pixelBoundaryPos.back().x();
 			popped=1;
@@ -633,7 +646,7 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 	}
 
 	/* Find the corner points */
-	auto findClosestPt = [edgeInsetLevel, nPoints,&pixelBoundaryPos,&angles,&pTexels,&mappedTex] (Vector2f & pt, Vector2f & offset) {
+	auto findClosestPt = [edgeInsetLevel, nPoints,&pixelBoundaryPos,&angles] (Vector2f & pt, Vector2f & offset) {
 		float bestDistSq = FLT_MAX;
 		int index = 0;
 		for (int i=0; i<nPoints; i++) {
@@ -647,7 +660,7 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 		}
 
 	//	if (offset == Vector2f(-1,-1)) {
-		UINT rowStart = (int)(pixelBoundaryPos[index].y()) * mappedTex.RowPitch;
+		/*UINT rowStart = (int)(pixelBoundaryPos[index].y()) * mappedTex.RowPitch;
 		UINT colStart =  (int)(pixelBoundaryPos[index].x()) * 4;
 		//UINT rowStart = (int)(pixelBoundaryPos[index].y()) * mappedTex.RowPitch;
 		//UINT colStart =  (int)(pixelBoundaryPos[index].x()) * 4;
@@ -685,21 +698,22 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 				piece.edgeColors[i][edgeInsetLevel][count] = tex(pixelBoundaryPos[j].y(), pixelBoundaryPos[j].x());
 				tex(pixelBoundaryPos[j].y(), pixelBoundaryPos[j].x()).w() = 0;
 
-				//UINT rowStart = (int)(pixelBoundaryPos[j].y()) * mappedTex.RowPitch;
-				//UINT colStart =  (int)(pixelBoundaryPos[j].x()) * 4;
-				/*pTexels[rowStart + colStart + 0] = i == 0 ? 255 : 0;
+				/*if (edgeInsetLevel==3) {
+				UINT rowStart = (int)(pixelBoundaryPos[j].y()) * mappedTex.RowPitch;
+				UINT colStart =  (int)(pixelBoundaryPos[j].x()) * 4;
+				pTexels[rowStart + colStart + 0] = i == 0 ? 255 : 0;
 				pTexels[rowStart + colStart + 1] = i == 1 ? 255 : 0;
 				pTexels[rowStart + colStart + 2] = i == 2 ? 255 : 0; 
 				pTexels[rowStart + colStart + 3] = 255;
-				
-				pTexels[rowStart + colStart + 0] = edgeInsetLevel == 0 ? 255 : 0;
+				}
+				/*pTexels[rowStart + colStart + 0] = edgeInsetLevel == 0 ? 255 : 0;
 				pTexels[rowStart + colStart + 1] = edgeInsetLevel == 1 ? 255 : 0;
 				pTexels[rowStart + colStart + 2] = edgeInsetLevel == 2 ? 255 : 0; 
 				pTexels[rowStart + colStart + 3] = 255;*/
 			}
 		}
 
-		pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
+		//pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
 		return;
 	}
 
@@ -711,14 +725,26 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 			bd.pos = pixelBoundaryPos[j];
 			bd.k = curvatures[j];
 			edges[i].push_back(bd);
+
+			/*UINT rowStart = (int)(pixelBoundaryPos[j].y()) * mappedTex.RowPitch;
+			UINT colStart =  (int)(pixelBoundaryPos[j].x()) * 4;
+			pTexels[rowStart + colStart + 0] = i == 0 ? 255 : 0;
+			pTexels[rowStart + colStart + 1] = i == 1 ? 255 : 0;
+			pTexels[rowStart + colStart + 2] = i == 2 ? 255 : 0; 
+			pTexels[rowStart + colStart + 3] = 255;*/
+				
+			/*pTexels[rowStart + colStart + 0] = edgeInsetLevel == 0 ? 255 : 0;
+			pTexels[rowStart + colStart + 1] = edgeInsetLevel == 1 ? 255 : 0;
+			pTexels[rowStart + colStart + 2] = edgeInsetLevel == 2 ? 255 : 0; 
+			pTexels[rowStart + colStart + 3] = 255;*/
 		}
 		piece.endPoints[i] = pixelBoundaryPos[endPoints[i]];
 	}
 
 	/* Compute stats */
 	for (int i=0; i<4; i++) {
-		//std::fstream out1("out3.txt");
-		//std::fstream out2("out4.txt");
+		//std::ofstream out1("out3.txt", std::ofstream::trunc | std::ofstream::out);
+		//std::ofstream out2("out4.txt", std::ofstream::trunc | std::ofstream::out);
 
 		Vector3f edgeVec(piece.endPoints[(i+1)%4].x() - piece.endPoints[i].x(), piece.endPoints[(i+1)%4].y() - piece.endPoints[i].y(), 0);
 		float edgeLen = edgeVec.norm();
@@ -760,7 +786,9 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 			Vector2f xy1(Project(pt1));
 			Vector2f xy2(Project(pt2));
 			int xLow = ceilf((xy1.x()/edgeLen)*nProjectedPoints);
+			xLow = xLow < nProjectedPoints ? xLow : nProjectedPoints-1;
 			int xHigh = floorf((xy2.x()/edgeLen)*nProjectedPoints);
+			xHigh = xHigh < nProjectedPoints ? xHigh : nProjectedPoints-1;
 			if (j>0){
 				for (int k=xLow; k<=xHigh; k++) {
 					float t = (xy2.x()-xy1.x());
@@ -807,7 +835,7 @@ void JPuzzle::ProcessPuzzlePiece(Texture & tex, int edgeInsetLevel, ID3D10Device
 		out << data[i].k << std::endl; */
 
 	//if (piece.isBorderPiece) OutputDebugStringA("here\n");
-	pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
+	//pTexture->Unmap(D3D10CalcSubresource(0, 0, 1));
 
 	/*std::ofstream stream("C:\\Users\\Aric\\Desktop\\cs231a\\FinalProject\\code\\curve_lab\\New folder\\test2.mat", std::ios::out | std::ios::binary);
 	for (int i=0; i<curves[1].size(); i++) {
@@ -822,9 +850,11 @@ void JPuzzle::AddPiece()
 {
 	//border pieces
 	if (m_nPiecesAdded == 1) {
+		std::vector<EdgeLinkInfo> links; links.resize(1);
 		std::vector<std::vector<float> > assignMatrix;
 		std::vector<PuzzlePiece*> borderPieces;
 		//MatrixXf mat;
+
 		int startidx = 0;
 		borderPieces.push_back(m_AddedPuzzlePieces[0]);
 
@@ -840,8 +870,12 @@ void JPuzzle::AddPiece()
 			for (std::vector<PuzzlePiece*>::iterator it_c = borderPieces.begin(); it_c != borderPieces.end(); ++it_c) {
 				int leftIdx = (*it_r)->left();
 				int rightIdx = (*it_c)->right();
-				if(CompareEdgesByShape(**it_c, **it_r, rightIdx, leftIdx) < 3.5)
-					row.push_back(CompareEdgesByColor(**it_c, **it_r, rightIdx, leftIdx));
+				links[0].a = *it_c;
+				links[0].b = *it_r;
+				links[0].k = rightIdx;
+				links[0].l = leftIdx;
+				if(CompareEdgesByShape(links) < 3.5)
+					row.push_back(CompareEdgesByColor(links));
 				else
 					row.push_back(100000);
 				//cout << Sim((*it_)->right(), (*it)->left()) << ' ' << (*it_)->orientation << ' ' << (*it)->orientation << endl;
@@ -856,8 +890,8 @@ void JPuzzle::AddPiece()
 			//extend to the left
 			int idxL = assignment.back();
 			std::vector<float> row = assignMatrix[idxL];
-			float min = INFINITY;
-			float second_min = INFINITY;
+			float min = FLT_MAX;
+			float second_min = FLT_MAX;
 			int minidx = -1;
 			for (int i = 0; i<row.size(); ++i) {
 				if (idxL == i)
@@ -885,8 +919,8 @@ void JPuzzle::AddPiece()
 
 			//extend to the right
 			int idxR = assignment.front();
-			min = INFINITY;
-			second_min = INFINITY;
+			min = FLT_MAX;
+			second_min = FLT_MAX;
 			int minidxR = -1;
 			for (int i = 0; i<assignMatrix.size(); ++i) {
 				if (idxR == i)
@@ -959,11 +993,16 @@ void JPuzzle::AddPiece()
 				//float measure;
 				for (int i = 0; i < m_NotAddedPuzzlePieces.size(); ++i){
 					if (measure.b == m_NotAddedPuzzlePieces[i]){
-						measure.j = i;
+						//measure.j = i;
 						break;
 					}
 				}
 				MovePiece(measure);
+				measure.a->adjPieces[measure.k] = measure.b;
+				measure.a->edgeCovered[measure.k] = 1;
+				measure.b->adjPieces[measure.l] = measure.a;
+				measure.b->edgeCovered[measure.l] = 1;
+				measure.b->isAdded = 1;
 				m_nPiecesAdded++;
 			}
 			if(it_left == assignment.end())
@@ -976,23 +1015,87 @@ void JPuzzle::AddPiece()
 				//float measure;
 				for (int i = 0; i < m_NotAddedPuzzlePieces.size(); ++i){
 					if (measure.b == m_NotAddedPuzzlePieces[i]){
-						measure.j = i;
+						//measure.j = i;
 						break;
 					}
 				}
 				MovePiece(measure);
+				measure.a->adjPieces[measure.k] = measure.b;
+				measure.a->edgeCovered[measure.k] = 1;
+				measure.b->adjPieces[measure.l] = measure.a;
+				measure.b->edgeCovered[measure.l] = 1;
+				measure.b->isAdded = 1;
 				m_nPiecesAdded++;
 			}
-
+			  
 		}
+
+		PuzzlePiece * toLink[2] = {0,0};
+		for (int i=0, count=0; i<m_nPiecesAdded; i++) {
+			int sum=0;
+			for (int j=0; j<4; j++)
+				sum += m_AddedPuzzlePieces[i]->adjPieces[j] ? 1 : 0;
+			if (sum == 1)
+				toLink[count++] = m_AddedPuzzlePieces[i];
+		}
+		
+		int edgeIndices[2];
+		for (int i=0; i<2; i++) {
+			int sum = (int)toLink[i]->edgeIsBorder[0]+(int)toLink[i]->edgeIsBorder[1]+
+				(int)toLink[i]->edgeIsBorder[2]+(int)toLink[i]->edgeIsBorder[3];
+			if (sum == 1) {
+				int index=0;
+				for (; toLink[i]->adjPieces[index] == NULL; index++) {}
+				edgeIndices[i] = (index+2)%4;
+			} else {
+				edgeIndices[i] = 0;
+				for (; toLink[i]->adjPieces[edgeIndices[i]] != NULL || toLink[i]->edgeIsBorder[edgeIndices[i]]; edgeIndices[i]++) {}
+			}
+		}
+		for (int i=0; i<2; i++) {
+			toLink[i]->adjPieces[edgeIndices[i]] = toLink[(i+1)%2];
+			toLink[i]->edgeCovered[edgeIndices[i]] = 1;
+		}
+
+		/*
+		PuzzlePiece * previous = m_AddedPuzzlePieces[2];
+		PuzzlePiece * next = m_AddedPuzzlePieces[0];
+		while (next != NULL) {
+			char buf[256];
+			sprintf(buf, "\n%i\n", next->index);
+			OutputDebugStringA(buf);
+			bool notFound=1;
+			for (int i=3; i>=0; i--)  {
+				if (next->adjPieces[i] != NULL && next->adjPieces[i] != previous) {
+					previous = next;
+					next = next->adjPieces[i];
+					notFound=0;
+					break;
+				}
+			}
+			if(notFound) break;
+
+		}*/
+
+		// Link first piece with last piece
+		/*int firstEdgeIndex=0, lastEdgeIndex=0;
+		while (m_AddedPuzzlePieces[0]->edgeCovered[firstEdgeIndex]) firstEdgeIndex++;
+		while (m_AddedPuzzlePieces[m_nPiecesAdded-1]->edgeIsBorder[lastEdgeIndex]) lastEdgeIndex++;
+		if (m_AddedPuzzlePieces[m_nPiecesAdded-1]->edgeCovered[(lastEdgeIndex+1)%4]) 
+			lastEdgeIndex = lastEdgeIndex-1 < 0 ? 3 : lastEdgeIndex-1;
+		m_AddedPuzzlePieces[0]->adjPieces[firstEdgeIndex] = m_AddedPuzzlePieces[m_nPiecesAdded-1];
+		m_AddedPuzzlePieces[0]->edgeCovered[firstEdgeIndex] = 1;
+		m_AddedPuzzlePieces[m_nPiecesAdded-1]->adjPieces[lastEdgeIndex] = m_AddedPuzzlePieces[0];
+		m_AddedPuzzlePieces[m_nPiecesAdded-1]->edgeCovered[lastEdgeIndex] = 1;*/
 	}
-		//inner pieces
+	//inner pieces
 	else if (m_nPiecesAdded+1 <= m_nPuzzlePieces) {
 		m_nPiecesAdded++;
 		ComparePieces();
 		//MatchPocket(FindPockets());
-		Sleep(150);
+		
 	}
+	Sleep(150);
 }
 
 int CompareEdgeMeasures(const void * a, const void * b) 
@@ -1002,33 +1105,125 @@ int CompareEdgeMeasures(const void * a, const void * b)
 	if (*(float*)a >  *(float*)b) return (int)1;
 }
 
+void JPuzzle::FindNeighbors(PuzzlePiece & a, PuzzlePiece & b, int k, int l, std::vector<EdgeLinkInfo> & links)
+{
+	auto FindAdjEdgePiece = [] (PuzzlePiece * center, int adjEdgeIndex, PuzzlePiece *& next, int & nextEdgeIndex, int dir) {
+		next = center->adjPieces[adjEdgeIndex];
+		if (next == 0) return false;
+		nextEdgeIndex = 0;
+		while (next->adjPieces[nextEdgeIndex] != center) nextEdgeIndex++;
+		if (dir>0) nextEdgeIndex = nextEdgeIndex-1 < 0 ? 3 : nextEdgeIndex-1;
+		else nextEdgeIndex = (nextEdgeIndex+1)%4;
+		return next->edgeCovered[nextEdgeIndex];
+	};
+
+	auto FindAdjLink = [&FindAdjEdgePiece, &b, &links] (PuzzlePiece * center, int centerEdgeIndex, int & notAddedEdgeIndex, PuzzlePiece *& next, int & nextEdgeIndex, int dir) {
+		PuzzlePiece * right = 0;
+		int rightEdgeIndex = 0;
+		int index = 0;
+		if (dir>0) index = centerEdgeIndex-1 < 0 ? 3 : centerEdgeIndex-1;
+		else index = (centerEdgeIndex+1)%4;
+		if (!FindAdjEdgePiece(center, index, right, rightEdgeIndex, dir)) return 0;
+		else {
+			if (right->edgeIsBorder[rightEdgeIndex]) return 0;
+			//int asdf=0;
+		//	FindAdjEdgePiece(center, centerEdgeIndex-1 < 0 ? 3 : centerEdgeIndex-1, right, rightEdgeIndex);
+			if (FindAdjEdgePiece(right, rightEdgeIndex, next, nextEdgeIndex, dir)) {
+				if (next->edgeIsBorder[nextEdgeIndex]) return 0;
+				DebugBreak();
+			} else {
+				EdgeLinkInfo eInfo;
+				eInfo.a = next;
+				eInfo.b = &b;
+				eInfo.k = nextEdgeIndex;
+				if (dir<0) notAddedEdgeIndex = notAddedEdgeIndex-1 < 0 ? 3 : notAddedEdgeIndex-1;
+				else notAddedEdgeIndex = (notAddedEdgeIndex+1)%4;
+				eInfo.l = notAddedEdgeIndex;
+				links.push_back(eInfo);
+				return 1;
+			}
+		}
+		return 0;
+	};
+
+	PuzzlePiece * currentAdded = &a;
+	int currentAddedEdgeIndex = k;
+	int currentNonAddedEdgeIndex = l;
+	PuzzlePiece * next = 0;
+	int nextEdgeIndex = 0;
+	while (FindAdjLink(currentAdded, currentAddedEdgeIndex, currentNonAddedEdgeIndex, next, nextEdgeIndex, 1) && next != &a) {
+		currentAdded = next;
+		currentAddedEdgeIndex = nextEdgeIndex;
+	}
+
+	if (links.size() < 4) {
+		currentAdded = &a;
+		currentAddedEdgeIndex = k;
+		currentNonAddedEdgeIndex = l;
+
+		while (FindAdjLink(currentAdded, currentAddedEdgeIndex, currentNonAddedEdgeIndex, next, nextEdgeIndex, -1) && next != &a) {
+			currentAdded = next;
+			currentAddedEdgeIndex = nextEdgeIndex;
+		}
+	}
+
+	if (links.size() < 4) {
+		// Center edge
+		EdgeLinkInfo eInfo;
+		eInfo.a = &a;
+		eInfo.b = &b;
+		eInfo.k = k;
+		eInfo.l = l;
+		links.push_back(eInfo);
+	}
+}
+
 void JPuzzle::ComparePieces()
 {
 	/* Compute the measures */
+	int largestLink=0;
+	std::vector<EdgeLinkInfo> links;
 	int nMeasures = 0;
 	EdgeLinkInfo * measures = new EdgeLinkInfo[m_AddedPuzzlePieces.size()*m_NotAddedPuzzlePieces.size()*4*4]; 
 	for (int i=0; i<m_AddedPuzzlePieces.size(); i++) {
 		for (int j=0; j<m_NotAddedPuzzlePieces.size(); j++) {
+			if (m_NotAddedPuzzlePieces[j]->isAdded) continue;
 			for (int k=0; k<4; k++) {
 				for (int l=0; l<4; l++) {
+					if (k==3 && l==1)
+						int aa=0;
 					if (!m_AddedPuzzlePieces[i]->edgeCovered[k] && !m_NotAddedPuzzlePieces[j]->edgeCovered[l]) {
-						float dist = abs((m_AddedPuzzlePieces[i]->endPoints[k]-m_AddedPuzzlePieces[i]->endPoints[(k+1)%4]).norm()
-							- (m_NotAddedPuzzlePieces[j]->endPoints[l]-m_NotAddedPuzzlePieces[j]->endPoints[(l+1)%4]).norm());
-						if (dist < 12) {
-							//measures[nMeasures].measure = CompareEdgesByShape(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
-							//measures[nMeasures].measure = CompareEdgesByColor(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
-							measures[nMeasures].measure = dist+CompareEdgesByShape(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
+						if (m_AddedPuzzlePieces[i]->index == 3 && m_NotAddedPuzzlePieces[j]->index == 4) 
+							int asdf=0;
+						FindNeighbors(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l, links);
+						
+						/*if (links.size() == 4) {
+							int asdf=0;
+							links.resize(0);
+							FindNeighbors(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l, links);
+						}*/
+						float val = CompareEdgesByShape(links);
+						if (val < 10000 && links.size() >= largestLink) {
+							if (links.size() > largestLink) { 
+								largestLink = links.size();
+								nMeasures = 0; //reset
+							}
+							
+							measures[nMeasures].measure = val/links.size();
 							measures[nMeasures].a = m_AddedPuzzlePieces[i];
 							measures[nMeasures].b = m_NotAddedPuzzlePieces[j];
-							measures[nMeasures].j = j;
+							//measures[nMeasures].j = j;
 							measures[nMeasures].k = k;
 							measures[nMeasures++].l = l;
 						}
+						links.resize(0);
 					}
 				}
 			}
 		}
 	}
+	if (nMeasures == 0) 
+		DebugBreak();
 	qsort(measures, nMeasures, sizeof(EdgeLinkInfo), CompareEdgeMeasures);
 	float maxShapeMeasure = measures[nMeasures-1].measure;
 
@@ -1039,13 +1234,14 @@ void JPuzzle::ComparePieces()
 	//OutputDebugStringA(buf);
 	int count=0;
 	for (int i=0; i<nMeasures; i++) {
-		if (measures[i].measure < 4) count++;
+		if (measures[i].measure < 3) count++;
 		out7 << measures[i].measure << std::endl;
 	}
 
 	int nNewMeasures = min(count, nMeasures);
 	for (int i=0; i<nNewMeasures; i++) {
-		measures[i].measure = CompareEdgesByColor(*measures[i].a, *measures[i].b, measures[i].k, measures[i].l);
+		FindNeighbors(*measures[i].a, *measures[i].b, measures[i].k, measures[i].l, links);
+		measures[i].measure = CompareEdgesByColor(links); links.resize(0);
 	}
 	EdgeLinkInfo * oldMeasures = new EdgeLinkInfo[nMeasures];
 	memcpy(oldMeasures, measures, sizeof(EdgeLinkInfo)*nMeasures);
@@ -1061,111 +1257,132 @@ void JPuzzle::ComparePieces()
 
 	MovePiece(measures[0]);
 
+	FindNeighbors(*measures[0].a, *measures[0].b, measures[0].k, measures[0].l, links); 
+	for (int i=0; i<links.size(); i++) {
+		links[i].a->adjPieces[links[i].k] = links[i].b;
+		links[i].a->edgeCovered[links[i].k] = 1;
+		links[i].b->adjPieces[links[i].l] = links[i].a;
+		links[i].b->edgeCovered[links[i].l] = 1;
+		links[i].b->isAdded = 1;
+	}
+
 	delete[] measures;
 	delete[] oldMeasures;
 }
 
-float JPuzzle::CompareEdgesByShape(PuzzlePiece & a, PuzzlePiece & b, int k, int l)
-{
-	//return abs(a.totalLength[k] - b.totalLength[l]);
-	//return abs((a.endPoints[k]-a.endPoints[(k+1)%4]).norm() - (b.endPoints[l]-b.endPoints[(l+1)%4]).norm());
+float JPuzzle::CompareEdgesByShape(std::vector<EdgeLinkInfo> & links) 
+{					
+	float measure = 0;
+	for (int i=0; i<links.size(); i++) {
+		PuzzlePiece & a=*links[i].a;
+		PuzzlePiece & b=*links[i].b;
+		int k=links[i].k, l=links[i].l;
 
-	//std::ofstream out1("out1.txt");
-	//std::ofstream out2("out2.txt");
+		float dist = abs((a.endPoints[k]-a.endPoints[(k+1)%4]).norm() - (b.endPoints[l]-b.endPoints[(l+1)%4]).norm());
+		if (dist > 12) return FLT_MAX;
 
-	std::vector<float> * longProjectedPoints;
-	std::vector<float> * shortProjectedPoints;
+		//return abs(a.totalLength[k] - b.totalLength[l]);
+		//return abs((a.endPoints[k]-a.endPoints[(k+1)%4]).norm() - (b.endPoints[l]-b.endPoints[(l+1)%4]).norm());
+
+		//std::ofstream out1("out1.txt");
+		//std::ofstream out2("out2.txt");
+
+		std::vector<float> * longProjectedPoints;
+		std::vector<float> * shortProjectedPoints;
 	
-	if (a.projectedPoints[k].size() > b.projectedPoints[l].size()) {
-		longProjectedPoints = &a.projectedPoints[k], shortProjectedPoints = &b.projectedPoints[l];
-	} else {
-		shortProjectedPoints = &a.projectedPoints[k], longProjectedPoints = &b.projectedPoints[l];
-	}
-
-	auto Compare = [&] (int offset) {
-		float sum=0;
-		int longEdgeSize = longProjectedPoints->size();
-		for (int i=0, end=shortProjectedPoints->size(); i<end; i++) {
-			float hs = (*shortProjectedPoints)[end-i-1];
-			//out1 << i << ' ' << hs << std::endl;
-			float hl = (*longProjectedPoints)[i+offset];
-			//out2 << i << ' ' << -hl << std::endl;
-			sum += abs(hs+hl);
+		if (a.projectedPoints[k].size() > b.projectedPoints[l].size()) {
+			longProjectedPoints = &a.projectedPoints[k], shortProjectedPoints = &b.projectedPoints[l];
+		} else {
+			shortProjectedPoints = &a.projectedPoints[k], longProjectedPoints = &b.projectedPoints[l];
 		}
-		return sum;
-	};
 
-	int offset = (longProjectedPoints->size()-shortProjectedPoints->size())/2;
-	float measure = Compare(offset)/shortProjectedPoints->size();
+		auto Compare = [&] (int offset) {
+			float sum=0;
+			int longEdgeSize = longProjectedPoints->size();
+			for (int i=0, end=shortProjectedPoints->size(); i<end; i++) {
+				float hs = (*shortProjectedPoints)[end-i-1];
+				//out1 << i << ' ' << hs << std::endl;
+				float hl = (*longProjectedPoints)[i+offset];
+				//out2 << i << ' ' << -hl << std::endl;
+				sum += abs(hs+hl);
+			}
+			return sum;
+		};
 
+		int offset = (longProjectedPoints->size()-shortProjectedPoints->size())/2;
+		measure += dist + Compare(offset)/shortProjectedPoints->size();
+	}
 	return measure;
 }
 
-
-float JPuzzle::CompareEdgesByColor(PuzzlePiece & a, PuzzlePiece & b, int k, int l) 
+float JPuzzle::CompareEdgesByColor(std::vector<EdgeLinkInfo> & links) 
 {
-	//std::ofstream out1("out1.txt");
-	//std::ofstream out2("out2.txt");
+	float measure = 0;
+	for (int i=0; i<links.size(); i++) {
+		PuzzlePiece & a=*links[i].a;
+		PuzzlePiece & b=*links[i].b;
+		int k=links[i].k, l=links[i].l;
 
-	int layerIndex=3;
-	int minSize = a.edgeColors[k][layerIndex+1].size();
-	if (b.edgeColors[l][layerIndex+1].size() < minSize) {
-		minSize = b.edgeColors[l][layerIndex+1].size();
-	}
-	
-	float measure=0;
-	auto ExtractLeftRightColors = [minSize,k,l,&a,&b] (int layerIndex, Color * leftColors, Color * rightColors) {
-		int offsetA=a.edgeColors[k][layerIndex].size()-minSize;
-		int offsetB=b.edgeColors[l][layerIndex].size()-minSize;
-		for (int i=0; i<minSize; i++) {
-			leftColors[i] = a.edgeColors[k][layerIndex][i+offsetA];
-			rightColors[i] = b.edgeColors[l][layerIndex][offsetB+(minSize-i-1)];
-			//leftColors[i] = a.edgeColors[k][layerIndex][i];
-			//rightColors[i] = b.edgeColors[l][layerIndex][b.edgeColors[l][layerIndex].size()-i-1];
+		//std::ofstream out1("out1.txt");
+		//std::ofstream out2("out2.txt");
+
+		int layerIndex=m_MaxColorLayers-2;
+		int minSize = a.edgeColors[k][layerIndex+1].size();
+		if (b.edgeColors[l][layerIndex+1].size() < minSize) {
+			minSize = b.edgeColors[l][layerIndex+1].size();
 		}
-	};
+	
+		auto ExtractLeftRightColors = [minSize,k,l,&a,&b] (int layerIndex, Color * leftColors, Color * rightColors) {
+			int offsetA=a.edgeColors[k][layerIndex].size()-minSize;
+			int offsetB=b.edgeColors[l][layerIndex].size()-minSize;
+			for (int i=0; i<minSize; i++) {
+				leftColors[i] = a.edgeColors[k][layerIndex][i+offsetA];
+				rightColors[i] = b.edgeColors[l][layerIndex][offsetB+(minSize-i-1)];
+				//leftColors[i] = a.edgeColors[k][layerIndex][i];
+				//rightColors[i] = b.edgeColors[l][layerIndex][b.edgeColors[l][layerIndex].size()-i-1];
+			}
+		};
 
-	if (minSize >= 1024)
-		DebugBreak();
+		if (minSize >= 1024)
+			DebugBreak();
 
-	ExtractLeftRightColors(layerIndex, m_LeftColors[1], m_RightColors[0]);
-	ExtractLeftRightColors(layerIndex+1, m_LeftColors[0], m_RightColors[1]);
-	measure = MGC(m_LeftColors, m_RightColors, minSize, minSize);//*/
+		ExtractLeftRightColors(layerIndex, m_LeftColors[1], m_RightColors[0]);
+		ExtractLeftRightColors(layerIndex+1, m_LeftColors[0], m_RightColors[1]);
+		measure += MGC(m_LeftColors, m_RightColors, minSize, minSize);//*/
 
-	//if (k==2 && l==0)
-	//	int a=0;
+		//if (k==2 && l==0)
+		//	int a=0;
 
-	/*std::vector<Color> left[2];
-	std::vector<Color> right[2];
-	int minSize = a.edgeColors[k][m_MaxColorLayers-1].size();
-	if (b.edgeColors[l][m_MaxColorLayers-1].size() < minSize) {
-		minSize = b.edgeColors[l][m_MaxColorLayers-1].size();
+		/*std::vector<Color> left[2];
+		std::vector<Color> right[2];
+		int minSize = a.edgeColors[k][m_MaxColorLayers-1].size();
+		if (b.edgeColors[l][m_MaxColorLayers-1].size() < minSize) {
+			minSize = b.edgeColors[l][m_MaxColorLayers-1].size();
+		}
+
+		left[0] = std::vector<Color>(a.edgeColors[k][m_MaxColorLayers-1].begin(), a.edgeColors[k][m_MaxColorLayers-1].begin()+minSize);
+		left[1] = std::vector<Color>(a.edgeColors[k][(m_MaxColorLayers-2)].begin(), a.edgeColors[k][(m_MaxColorLayers-2)].begin() + minSize);
+
+		right[0] = std::vector<Color>();
+		right[1] = std::vector<Color>();
+
+		std::vector<Color>::iterator it_r0 = b.edgeColors[l][(m_MaxColorLayers-2)].end();
+		std::vector<Color>::iterator it_r1 = b.edgeColors[l][m_MaxColorLayers-1].end();
+
+		for(int i=0; i<minSize; ++i){
+			right[0].push_back(*(--it_r0));
+			right[1].push_back(*(--it_r1));
+		}
+
+		Color * leftColors[2];
+		Color * rightColors[2];
+		leftColors[0] = left[0].data();
+		leftColors[1] = left[1].data();
+		rightColors[0] = right[0].data();
+		rightColors[1] = right[1].data();
+		measure += MGC(leftColors, rightColors, minSize, minSize);//*/
 	}
-
-	left[0] = std::vector<Color>(a.edgeColors[k][m_MaxColorLayers-1].begin(), a.edgeColors[k][m_MaxColorLayers-1].begin()+minSize);
-	left[1] = std::vector<Color>(a.edgeColors[k][(m_MaxColorLayers-2)].begin(), a.edgeColors[k][(m_MaxColorLayers-2)].begin() + minSize);
-
-	right[0] = std::vector<Color>();
-	right[1] = std::vector<Color>();
-
-	std::vector<Color>::iterator it_r0 = b.edgeColors[l][(m_MaxColorLayers-2)].end();
-	std::vector<Color>::iterator it_r1 = b.edgeColors[l][m_MaxColorLayers-1].end();
-
-	for(int i=0; i<minSize; ++i){
-		right[0].push_back(*(--it_r0));
-		right[1].push_back(*(--it_r1));
-	}
-
-	Color * leftColors[2];
-	Color * rightColors[2];
-	leftColors[0] = left[0].data();
-	leftColors[1] = left[1].data();
-	rightColors[0] = right[0].data();
-	rightColors[1] = right[1].data();
-	float measure = MGC(leftColors, rightColors, minSize, minSize);//*/
-
 	return measure;
-
 }
 
 void JPuzzle::Render(ID3D10Device * pDevice)
@@ -1270,10 +1487,7 @@ void JPuzzle::MovePiece(EdgeLinkInfo & measure)
         Vector4f dif = asdf2 - asdf;
 
         // Update puzzle info
-        m_AddedPuzzlePieces.push_back(&b);
-        m_NotAddedPuzzlePieces.erase(m_NotAddedPuzzlePieces.begin() + best.j);
-        a.edgeCovered[best.k] = 1;
-        b.edgeCovered[best.l] = 1;
+		m_AddedPuzzlePieces.push_back(&b);
 }
 
 MatrixXd dummyCov(MatrixXd& mat, Vector3d& mu) 
@@ -1344,10 +1558,11 @@ std::vector<JPuzzle::Pocket> JPuzzle::FindPockets(){
 	std::vector<Pocket> pockets;
 	return pockets;
 }
+/*
 void JPuzzle::MatchPocket(std::vector<Pocket> pockets) {
 	//iterate through all the pockets and find the one with the best "confidence"
 	EdgeLinkInfo bestPocket;
-	bestPocket.measure = INFINITY;
+	bestPocket.measure = FLT_MAX;
 	for(std::vector<Pocket>::iterator p_it = pockets.begin(); p_it != pockets.end(); ++p_it) {
 		 PuzzlePiece* bestMatch;
 		 std::vector<float> sim1;
@@ -1370,7 +1585,7 @@ void JPuzzle::MatchPocket(std::vector<Pocket> pockets) {
                 //sim = simL + simT - alpha*sqrt(simL*simL+simT*simT-(simL+simT)*(simL+simT)/4.0);
                 //cout << sim << endl;
 		 }
-        float max[2]={INFINITY,INFINITY}, second_max[2]={INFINITY,INFINITY};
+        float max[2]={FLT_MAX,FLT_MAX}, second_max[2]={FLT_MAX,FLT_MAX};
         for(int k=0; k<sim1.size(); k++){
             if(sim1[k]<max[0]){
                 second_max[0] = max[0];
@@ -1388,7 +1603,7 @@ void JPuzzle::MatchPocket(std::vector<Pocket> pockets) {
                 second_max[1] = sim2[k];
             }
         }
-        float sim = INFINITY;
+        float sim = FLT_MAX;
         /*if(sim1.size()==1){
             Pocket p;
             p.best_fit = *(pool.begin());
@@ -1399,7 +1614,7 @@ void JPuzzle::MatchPocket(std::vector<Pocket> pockets) {
             p.p = type;
             
             return p;
-        }*/
+        }//
         int max_idx = -1;
         for(int k=0; k<sim1.size(); k++){
             float s1=0;
@@ -1426,7 +1641,7 @@ void JPuzzle::MatchPocket(std::vector<Pocket> pockets) {
 			bestPocket.b = *it;
 			bestPocket.k = p_it->k;
 			bestPocket.l = orientation;
-			bestPocket.j = max_idx;
+			//bestPocket.j = max_idx;
 			bestPocket.measure = sim;
 		}
         //result[i*m+j] = *it;
@@ -1437,3 +1652,4 @@ void JPuzzle::MatchPocket(std::vector<Pocket> pockets) {
 	//add the piece
 	//book keeping
 }
+*/
