@@ -7,6 +7,7 @@
 #include <queue>
 #include <list>
 #include <Eigen/LU>
+#include <iostream>
 
 JPuzzle::JPuzzle():m_pEffect(0), m_pTechnique(0), m_pVertexLayout(0), m_pVBQuad(0), m_pIBQuad(0), m_pSRVPuzzleTextureFx(0), m_pWorldfx(0), m_nPiecesAdded(0)
 {
@@ -808,10 +809,10 @@ void JPuzzle::AddPiece()
 			for (std::vector<PuzzlePiece*>::iterator it_c = borderPieces.begin(); it_c != borderPieces.end(); ++it_c) {
 				int leftIdx = (*it_r)->left();
 				int rightIdx = (*it_c)->right();
-				if(CompareEdgesByShape(**it_c, **it_r, rightIdx, leftIdx) < 3)
+				if(CompareEdgesByShape(**it_c, **it_r, rightIdx, leftIdx) <= 3)
 					row.push_back(CompareEdgesByColor(**it_c, **it_r, rightIdx, leftIdx));
 				else
-					row.push_back(100000);
+					row.push_back(10000);
 				//cout << Sim((*it_)->right(), (*it)->left()) << ' ' << (*it_)->orientation << ' ' << (*it)->orientation << endl;
 			}
 			assignMatrix.push_back(row);
@@ -958,7 +959,7 @@ void JPuzzle::AddPiece()
 	else if (m_nPiecesAdded+1 <= m_nPuzzlePieces) {
 		m_nPiecesAdded++;
 		ComparePieces();
-		//MatchPocket(FindPockets());
+		//sMatchPocket(FindPockets());
 		Sleep(150);
 	}
 }
@@ -982,10 +983,10 @@ void JPuzzle::ComparePieces()
 					if (!m_AddedPuzzlePieces[i]->edgeCovered[k] && !m_NotAddedPuzzlePieces[j]->edgeCovered[l]) {
 						float dist = abs((m_AddedPuzzlePieces[i]->endPoints[k]-m_AddedPuzzlePieces[i]->endPoints[(k+1)%4]).norm()
 							- (m_NotAddedPuzzlePieces[j]->endPoints[l]-m_NotAddedPuzzlePieces[j]->endPoints[(l+1)%4]).norm());
-						if (dist < 12) {
+						if (dist<12) {
 							//measures[nMeasures].measure = CompareEdgesByShape(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
 							//measures[nMeasures].measure = CompareEdgesByColor(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
-							measures[nMeasures].measure = dist+CompareEdgesByShape(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);
+							measures[nMeasures].measure = dist+CompareEdgesByShape(*m_AddedPuzzlePieces[i], *m_NotAddedPuzzlePieces[j], k, l);																			
 							measures[nMeasures].a = m_AddedPuzzlePieces[i];
 							measures[nMeasures].b = m_NotAddedPuzzlePieces[j];
 							measures[nMeasures].j = j;
@@ -1307,6 +1308,80 @@ std::vector<JPuzzle::Pocket> JPuzzle::FindPockets(){
 	//find two edges sharing one endpoint and almost perpendicular
 	//return Pockets
 	std::vector<Pocket> pockets;
+	struct OpenEdge {
+		Vector2f EndPoint[2];
+		Vector2f EdgeNor;
+		PuzzlePiece* a;
+		int k;
+	};
+	std::vector<OpenEdge> openEdges;
+	for(std::vector<PuzzlePiece*>::iterator it = m_AddedPuzzlePieces.begin(); it!=m_AddedPuzzlePieces.end(); ++it) {
+		for(int i=0; i<4; i++) {
+			if(!((*it)->edgeCovered[i])){
+				//construct an openEdge object
+				OpenEdge openEdge;
+				Vector4f endPoint = Vector4f((*it)->endPoints[i](0), (*it)->endPoints[i](1), 0, 1);
+				endPoint = (*it)->transform * endPoint;
+				openEdge.EndPoint[0] = Vector2f(endPoint(0), endPoint(1));
+
+				endPoint = Vector4f((*it)->endPoints[(i+1)%4](0), (*it)->endPoints[(i+1)%4](1), 0, 1);
+				endPoint = (*it)->transform * endPoint;
+				openEdge.EndPoint[1] = Vector2f(endPoint(0), endPoint(1));
+				
+				Matrix2f rot;
+				for(int s=0; s<2; ++s)
+					for(int t=0; t<2; ++t){
+						rot(s,t) = (*it)->rotation(s,t);
+				}
+				openEdge.EdgeNor = rot.transpose().inverse() *((*it)->edgeNor[i]);
+				openEdge.a = *it;
+				openEdge.k = i;
+				//pushback
+				openEdges.push_back(openEdge);
+			}
+		}
+	}
+	for(int i=0; i<openEdges.size(); ++i)
+		for(int j=i+1; j<openEdges.size(); ++j) {
+			if(openEdges[i].a == openEdges[j].a)
+				continue;
+			Vector2f normal[2];
+			Matrix2f rot[2];
+		
+			normal[0] = openEdges[i].EdgeNor;
+			normal[1] = openEdges[j].EdgeNor;
+
+			float cos_theta = (normal[0]).dot(normal[1]);
+			
+			if( cos_theta<0.1 && cos_theta>-0.1){
+				Vector2f endPoint[2];
+				endPoint[0] = openEdges[i].EndPoint[0];
+				endPoint[1] = openEdges[j].EndPoint[1];
+				float dist0 = (endPoint[0] - endPoint[1]).norm();
+
+				endPoint[0] = openEdges[j].EndPoint[0];
+				endPoint[1] = openEdges[i].EndPoint[1];
+				float dist1 = (endPoint[0] - endPoint[1]).norm();
+
+				if(dist0 <10){
+					Pocket pocket;
+					pocket.a = openEdges[i].a;
+					pocket.k = openEdges[i].k;
+					pocket.b = openEdges[j].a;
+					pocket.l = openEdges[j].k;
+					pockets.push_back(pocket);
+				} else if(dist1 <10 ) {
+					Pocket pocket;
+					pocket.a = openEdges[j].a;
+					pocket.k = openEdges[j].k;
+					pocket.b = openEdges[i].a;
+					pocket.l = openEdges[i].k;
+					pockets.push_back(pocket);
+				}
+			}
+		}
+
+
 	return pockets;
 }
 void JPuzzle::MatchPocket(std::vector<Pocket> pockets) {
@@ -1374,9 +1449,7 @@ void JPuzzle::MatchPocket(std::vector<Pocket> pockets) {
             if(sim2[k])
                 s2 = sim2[k]/second_max[1];
 			float alpha = 1.f;
-            float s = s1 + s2 + alpha*sqrt(s1*s1+s2*s2-(s1+s2)*(s1+s2)/4.f);
-     
-            //waitKey(0);
+            float s = s1 + s2;//+ alpha*sqrt(s1*s1+s2*s2-(s1+s2)*(s1+s2)/4.f);
             if(s < sim){
                 sim = s;
                 max_idx = k;
@@ -1386,12 +1459,12 @@ void JPuzzle::MatchPocket(std::vector<Pocket> pockets) {
 			int pidx = max_idx/4;
 			int orientation = max_idx%4;
 			std::vector<PuzzlePiece*>::iterator it = m_NotAddedPuzzlePieces.begin();
-			std::advance(it, max_idx);
+			std::advance(it, pidx);
 			bestPocket.a = p_it->a;
 			bestPocket.b = *it;
 			bestPocket.k = p_it->k;
 			bestPocket.l = orientation;
-			bestPocket.j = max_idx;
+			bestPocket.j = pidx;
 			bestPocket.measure = sim;
 		}
         //result[i*m+j] = *it;

@@ -7,6 +7,7 @@
 #include <d3dx10.h>
 #include <Eigen/Dense>
 #include <vector>
+
 using namespace Eigen;
 
 #pragma comment(lib, "d3d10")
@@ -82,7 +83,7 @@ struct Texture {
 
 class JPuzzle {
 private:
-	static const int m_MaxColorLayers=6;
+	static const int m_MaxColorLayers=5;
 
 	struct EdgePoint {
 		Vector2f pos;
