@@ -217,6 +217,8 @@ private:
 	std::vector<Pocket> FindPockets();
 	//void MatchPocket(std::vector<Pocket> pockets);
 	void FindNeighbors(PuzzlePiece & a, PuzzlePiece & b, int k, int l, std::vector<EdgeLinkInfo> & links);
+	void AssemblyBorder();
+	void AssemblyBorderMST();
 public:
 	JPuzzle();
 	~JPuzzle() {}

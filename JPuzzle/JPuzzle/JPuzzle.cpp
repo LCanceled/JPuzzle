@@ -850,7 +850,22 @@ void JPuzzle::AddPiece()
 {
 	//border pieces
 	if (m_nPiecesAdded == 1) {
-		std::vector<EdgeLinkInfo> links; links.resize(1);
+		//AssemblyBorder();
+		AssemblyBorderMST();
+	}
+	//inner pieces
+	else if (m_nPiecesAdded+1 <= m_nPuzzlePieces) {
+		m_nPiecesAdded++;
+		ComparePieces();
+		//MatchPocket(FindPockets());
+		
+	}
+	Sleep(150);
+}
+
+void JPuzzle::AssemblyBorder()
+{
+	std::vector<EdgeLinkInfo> links; links.resize(1);
 		std::vector<std::vector<float> > assignMatrix;
 		std::vector<PuzzlePiece*> borderPieces;
 		//MatrixXf mat;
@@ -1087,17 +1102,194 @@ void JPuzzle::AddPiece()
 		m_AddedPuzzlePieces[0]->edgeCovered[firstEdgeIndex] = 1;
 		m_AddedPuzzlePieces[m_nPiecesAdded-1]->adjPieces[lastEdgeIndex] = m_AddedPuzzlePieces[0];
 		m_AddedPuzzlePieces[m_nPiecesAdded-1]->edgeCovered[lastEdgeIndex] = 1;*/
-	}
-	//inner pieces
-	else if (m_nPiecesAdded+1 <= m_nPuzzlePieces) {
-		m_nPiecesAdded++;
-		ComparePieces();
-		//MatchPocket(FindPockets());
-		
-	}
-	Sleep(150);
 }
 
+void JPuzzle::AssemblyBorderMST()
+{
+	struct BorderStrip{
+		std::list<PuzzlePiece*> pieces;
+		BorderStrip(PuzzlePiece* p) {pieces.push_back(p);}
+		void addToLeft(PuzzlePiece* p) {pieces.push_front(p);}
+		void addToRight(BorderStrip& bs) {pieces.insert(pieces.end(), bs.pieces.begin(), bs.pieces.end());}
+	};
+	
+	std::vector<EdgeLinkInfo> links; links.resize(1);
+	std::vector<std::vector<float> > assignMatrix;
+	std::vector<BorderStrip> borderStrips;
+	//MatrixXf mat;
+
+	int startidx = 0;
+	borderStrips.push_back(BorderStrip(m_AddedPuzzlePieces[0]));
+
+	for (std::vector<PuzzlePiece*>::iterator it = m_NotAddedPuzzlePieces.begin(); it != m_NotAddedPuzzlePieces.end(); ++it) {
+		if ((*it)->isBorderPiece){
+			borderStrips.push_back(BorderStrip(*it));
+		}
+	}
+
+	for (std::vector<BorderStrip>::iterator it_r = borderStrips.begin(); it_r != borderStrips.end(); ++it_r) {
+		std::vector<float> row;//row i col j: i lies to the right of j
+		for (std::vector<BorderStrip>::iterator it_c = borderStrips.begin(); it_c != borderStrips.end(); ++it_c) {
+			int leftIdx = it_r->pieces.front()->left();
+			int rightIdx = it_c->pieces.front()->right();
+			links[0].a = it_c->pieces.front();
+			links[0].b = it_r->pieces.front();
+			links[0].k = rightIdx;
+			links[0].l = leftIdx;
+			if(CompareEdgesByShape(links) < 3.5)
+				row.push_back(CompareEdgesByColor(links));
+			else
+				row.push_back(100000);
+			//cout << Sim((*it_)->right(), (*it)->left()) << ' ' << (*it_)->orientation << ' ' << (*it)->orientation << endl;
+		}
+		assignMatrix.push_back(row);
+	}
+	
+	while(borderStrips.size()>1) {
+		float min = 1000000;
+		int min_i = -1;
+		int min_j = -1;
+		for(int i=0; i<assignMatrix.size() ; ++i)
+			for(int j=0; j<assignMatrix[i].size(); ++j){
+				if (i != j && assignMatrix[i][j] < min) {
+					min = assignMatrix[i][j];
+					min_i = i;
+					min_j = j;
+				}
+			}
+		//minimum found, combine strips
+		borderStrips[min_i].addToRight(borderStrips[min_j]);
+		std::vector<BorderStrip>::iterator b_it = borderStrips.begin();
+		std::advance(b_it, min_j);
+		borderStrips.erase(b_it);
+		//update assignMatrix
+		assignMatrix[min_i] = assignMatrix[min_j];
+		std::vector<std::vector<float>>::iterator it = assignMatrix.begin();
+		std::advance(it, min_j);
+		assignMatrix.erase(it);
+		for(int i=0; i<assignMatrix.size() ; ++i){
+			std::vector<float>::iterator row_it = assignMatrix[i].begin();
+			std::advance(row_it, min_j);
+			assignMatrix[i].erase(row_it);
+		}
+	}
+
+	std::list<PuzzlePiece*>::iterator it_left;
+	std::list<PuzzlePiece*>::iterator it_right;
+
+	std::list<PuzzlePiece*> border = borderStrips[0].pieces;
+	for(std::list<PuzzlePiece*>::iterator it = border.begin(); it != border.end(); ++it) {
+		if(*it == m_AddedPuzzlePieces[0]){
+			it_left = it;
+			it_right = it;
+		}
+	}
+	
+	while (m_nPiecesAdded < border.size()){
+			EdgeLinkInfo measure;
+			if(++it_left != border.end()){
+				measure.a = *(--it_left);
+				measure.b = *(++it_left);
+				measure.k = (measure.a)->left();
+				measure.l = (measure.b)->right();			
+				//float measure;
+				for (int i = 0; i < m_NotAddedPuzzlePieces.size(); ++i){
+					if (measure.b == m_NotAddedPuzzlePieces[i]){
+						//measure.j = i;
+						break;
+					}
+				}
+				MovePiece(measure);
+				measure.a->adjPieces[measure.k] = measure.b;
+				measure.a->edgeCovered[measure.k] = 1;
+				measure.b->adjPieces[measure.l] = measure.a;
+				measure.b->edgeCovered[measure.l] = 1;
+				measure.b->isAdded = 1;
+				m_nPiecesAdded++;
+			}
+			if(it_left == border.end())
+				--it_left;
+			if(it_right != border.begin()){
+				measure.a = *(it_right);
+				measure.b = *(--it_right);
+				measure.k = (measure.a)->right();
+				measure.l = (measure.b)->left();			
+				//float measure;
+				for (int i = 0; i < m_NotAddedPuzzlePieces.size(); ++i){
+					if (measure.b == m_NotAddedPuzzlePieces[i]){
+						//measure.j = i;
+						break;
+					}
+				}
+				MovePiece(measure);
+				measure.a->adjPieces[measure.k] = measure.b;
+				measure.a->edgeCovered[measure.k] = 1;
+				measure.b->adjPieces[measure.l] = measure.a;
+				measure.b->edgeCovered[measure.l] = 1;
+				measure.b->isAdded = 1;
+				m_nPiecesAdded++;
+			}
+			  
+		}
+
+		PuzzlePiece * toLink[2] = {0,0};
+		for (int i=0, count=0; i<m_nPiecesAdded; i++) {
+			int sum=0;
+			for (int j=0; j<4; j++)
+				sum += m_AddedPuzzlePieces[i]->adjPieces[j] ? 1 : 0;
+			if (sum == 1)
+				toLink[count++] = m_AddedPuzzlePieces[i];
+		}
+		
+		int edgeIndices[2];
+		for (int i=0; i<2; i++) {
+			int sum = (int)toLink[i]->edgeIsBorder[0]+(int)toLink[i]->edgeIsBorder[1]+
+				(int)toLink[i]->edgeIsBorder[2]+(int)toLink[i]->edgeIsBorder[3];
+			if (sum == 1) {
+				int index=0;
+				for (; toLink[i]->adjPieces[index] == NULL; index++) {}
+				edgeIndices[i] = (index+2)%4;
+			} else {
+				edgeIndices[i] = 0;
+				for (; toLink[i]->adjPieces[edgeIndices[i]] != NULL || toLink[i]->edgeIsBorder[edgeIndices[i]]; edgeIndices[i]++) {}
+			}
+		}
+		for (int i=0; i<2; i++) {
+			toLink[i]->adjPieces[edgeIndices[i]] = toLink[(i+1)%2];
+			toLink[i]->edgeCovered[edgeIndices[i]] = 1;
+		}
+
+		/*
+		PuzzlePiece * previous = m_AddedPuzzlePieces[2];
+		PuzzlePiece * next = m_AddedPuzzlePieces[0];
+		while (next != NULL) {
+			char buf[256];
+			sprintf(buf, "\n%i\n", next->index);
+			OutputDebugStringA(buf);
+			bool notFound=1;
+			for (int i=3; i>=0; i--)  {
+				if (next->adjPieces[i] != NULL && next->adjPieces[i] != previous) {
+					previous = next;
+					next = next->adjPieces[i];
+					notFound=0;
+					break;
+				}
+			}
+			if(notFound) break;
+
+		}*/
+
+		// Link first piece with last piece
+		/*int firstEdgeIndex=0, lastEdgeIndex=0;
+		while (m_AddedPuzzlePieces[0]->edgeCovered[firstEdgeIndex]) firstEdgeIndex++;
+		while (m_AddedPuzzlePieces[m_nPiecesAdded-1]->edgeIsBorder[lastEdgeIndex]) lastEdgeIndex++;
+		if (m_AddedPuzzlePieces[m_nPiecesAdded-1]->edgeCovered[(lastEdgeIndex+1)%4]) 
+			lastEdgeIndex = lastEdgeIndex-1 < 0 ? 3 : lastEdgeIndex-1;
+		m_AddedPuzzlePieces[0]->adjPieces[firstEdgeIndex] = m_AddedPuzzlePieces[m_nPiecesAdded-1];
+		m_AddedPuzzlePieces[0]->edgeCovered[firstEdgeIndex] = 1;
+		m_AddedPuzzlePieces[m_nPiecesAdded-1]->adjPieces[lastEdgeIndex] = m_AddedPuzzlePieces[0];
+		m_AddedPuzzlePieces[m_nPiecesAdded-1]->edgeCovered[lastEdgeIndex] = 1;*/
+}
 int CompareEdgeMeasures(const void * a, const void * b) 
 {
 	if (*(float*)a <  *(float*)b) return (int)-1;
@@ -1393,8 +1585,8 @@ void JPuzzle::Render(ID3D10Device * pDevice)
 	m_World = Matrix4f::Identity();
 	static float scale = 1.;
 	static Vector2f trans;
-	const float scaleAmount = .001;
-	const float transAmount = .001/scale;
+	const float scaleAmount = .01;
+	const float transAmount = .01/scale;
 	if (GetAsyncKeyState(VK_LBUTTON)) {
 		scale += scaleAmount;
 	} else if (GetAsyncKeyState(VK_RBUTTON)) {
