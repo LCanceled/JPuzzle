@@ -1929,10 +1929,16 @@ void JPuzzle::ComparePieces()
 	qsort(measures, nNewMeasures, sizeof(EdgeLinkInfo), CompareEdgeMeasures);
 	float maxColorMeasure = measures[nNewMeasures-1].measure;
 	
+	/*
 	for (int i=0; i<nMeasures; i++) {
 		if (i < nNewMeasures)
 			out7 << oldMeasures[i].measure*(maxShapeMeasure/maxColorMeasure) << std::endl;
 		else out7 << 0 << std::endl;
+	}*/
+	for (int i=0; i<nNewMeasures; i++) {		
+		FindNeighbors(*measures[i].a, *measures[i].b, measures[i].k, measures[i].l, links); 
+		out7 << measures[i].measure << ' ' << links.size() << ' ' << measures[i].k << ' ' << measures[i].l << ' ' << measures[i].a->index << ' ' << measures[i].b->index << ' ' <<  CompareEdgesByColor(links) << ' ' << CompareEdgesByColor(links) << std::endl;
+		links.resize(0);
 	}
 	out7.close();
 
@@ -2179,7 +2185,7 @@ MatrixXd dummyCov(MatrixXd& mat, Vector3d& mu)
 	VectorXd ones;
 	ones.setOnes(rows + 9);
 
-	Matrix3d S = 1.0 / (rows - 1)*(M - ones*mu.transpose()).transpose()*(M - ones*mu.transpose());
+	Matrix3d S = 1.0 / (rows + 8)*(M - ones*mu.transpose()).transpose()*(M - ones*mu.transpose());
 
 	return S.inverse();
 }
