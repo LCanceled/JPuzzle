@@ -7,6 +7,7 @@
 #include <d3dx10.h>
 #include <Eigen/Dense>
 #include <vector>
+#include <list>
 using namespace Eigen;
 
 #pragma comment(lib, "d3d10")
@@ -82,7 +83,7 @@ struct Texture {
 
 class JPuzzle {
 private:
-	static const int m_MaxColorLayers=4;
+	static const int m_MaxColorLayers=6;
 	 
 	struct EdgePoint {
 		Vector2f pos;
@@ -218,7 +219,17 @@ private:
 	//void MatchPocket(std::vector<Pocket> pockets);
 	void FindNeighbors(PuzzlePiece & a, PuzzlePiece & b, int k, int l, std::vector<EdgeLinkInfo> & links);
 	void AssemblyBorder();
+	struct BorderStrip{
+		std::list<PuzzlePiece*> pieces;
+		bool isAdded;
+		BorderStrip(PuzzlePiece* p):isAdded(false){pieces.push_back(p);}
+		void addToRight(PuzzlePiece* p) {pieces.push_front(p);}
+		void addToLeft(BorderStrip& bs) {pieces.insert(pieces.end(), bs.pieces.begin(), bs.pieces.end());}
+	};
 	void AssemblyBorderMST();
+	void AssemblyBorderWithDimension(int w, int h);
+	void borderSearch(float& globalMin, float recursiveMin, std::vector<PuzzlePiece*>& pool, std::list<int>& border, std::list<int>& optBorder, const std::vector<std::vector<float> >& assignMatrix, int length);
+	void borderStripSearch(float& globalMin, float recursiveMin, std::vector<BorderStrip>& pool, std::list<int>& recursiveBorder, std::vector<std::list<int>>& optBorder, int length);
 public:
 	JPuzzle();
 	~JPuzzle() {}

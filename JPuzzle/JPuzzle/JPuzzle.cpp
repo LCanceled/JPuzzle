@@ -7,6 +7,7 @@
 #include <queue>
 #include <list>
 #include <Eigen/LU>
+#include <iostream>
 
 JPuzzle::JPuzzle():m_pEffect(0), m_pTechnique(0), m_pVertexLayout(0), m_pVBQuad(0), m_pIBQuad(0), m_pSRVPuzzleTextureFx(0), m_pWorldfx(0), m_nPiecesAdded(0)
 {
@@ -349,6 +350,7 @@ HRESULT JPuzzle::Init(char * file, int nToLoad, ID3D10Device * pDevice)
 	}
 	m_nPiecesAdded = 1;
 	m_AddedPuzzlePieces.push_back(&m_PuzzlePieces[0]);
+	m_PuzzlePieces[0].isAdded=1;
 	for (int i=1; i<m_nPuzzlePieces; i++) {
 		m_NotAddedPuzzlePieces.push_back(&m_PuzzlePieces[i]);
 	}
@@ -852,6 +854,12 @@ void JPuzzle::AddPiece()
 	if (m_nPiecesAdded == 1) {
 		//AssemblyBorder();
 		AssemblyBorderMST();
+		//AssemblyBorderWithDimension(3,9);//puzzle 2
+		//AssemblyBorderWithDimension(13,7);//puzzle 6
+		//AssemblyBorderWithDimension(11,17);//puzzle 7
+		//AssemblyBorderWithDimension(14,15);//puzzle 10
+		//AssemblyBorderWithDimension(12,9);//puzzle 11
+		//AssemblyBorderWithDimension(9,12);//puzzle 12
 	}
 	//inner pieces
 	else if (m_nPiecesAdded+1 <= m_nPuzzlePieces) {
@@ -1104,14 +1112,101 @@ void JPuzzle::AssemblyBorder()
 		m_AddedPuzzlePieces[m_nPiecesAdded-1]->edgeCovered[lastEdgeIndex] = 1;*/
 }
 
+//first call: pool[0] is added; recursiveBorder[0] = 0;
+void JPuzzle::borderStripSearch(float& globalMin, float recursiveMin, std::vector<BorderStrip>& pool, std::list<int>& recursiveBorder, std::vector<std::list<int>>& optBorder, int length) {
+	if(recursiveMin > globalMin || length==0)
+		return;
+	if (length==1){
+			for (int i = 0; i<pool.size(); ++i) {
+				if(pool[i].isAdded==1)
+					continue;
+				//found the last one
+				//check dimension
+				recursiveBorder.push_back(i);
+				std::vector<int> corners;
+				int count = 0;
+				for(std::list<int>::iterator it = recursiveBorder.begin(); it!=recursiveBorder.end(); ++it) {
+					for(std::list<PuzzlePiece*>::iterator it_p = pool[*it].pieces.begin(); it_p != pool[*it].pieces.end(); ++it_p){
+						if((*it_p)->borders().size()==2){
+							corners.push_back(count);
+						}
+						count++;
+					}
+				}
+				assert(corners.size()==4);
+				int w = corners[1] - corners[0];
+				int h = corners[2] - corners[1];
+				if(corners[3]-corners[2] != w){
+					recursiveBorder.pop_back();
+					return;
+				}
+				if(count+corners[0]-corners[3] != h){
+					recursiveBorder.pop_back();
+					return;
+				}
+				//left-right
+				/*int leftIdx = pool[recursiveBorder.back()].pieces.back()->left();
+				int rightIdx = pool[i].pieces.front()->right();
+				std::vector<EdgeLinkInfo> links; links.resize(1);
+				links[0].a = pool[i].pieces.front();
+				links[0].b = pool[recursiveBorder.back()].pieces.back();
+				links[0].k = rightIdx;
+				links[0].l = leftIdx;
+				//if(CompareEdgesByShape(links) < 3.5)
+				float c1 = CompareEdgesByColor(links);
+			    
+				if(c1+recursiveMin >= globalMin){
+					recursiveBorder.pop_back();
+						return;
+				}
+
+				leftIdx = pool[i].pieces.back()->left();
+				rightIdx = pool[0].pieces.front()->right();
+				links[0].a = pool[0].pieces.front();
+				links[0].b = pool[i].pieces.back();
+				links[0].k = rightIdx;
+				links[0].l = leftIdx;
+				//if(CompareEdgesByShape(links) < 3.5)
+				float c2 = CompareEdgesByColor(links);*/
+				//if(c1+c2+recursiveMin < globalMin){
+					//globalMin = recursiveMin+c1+c2;
+					
+					optBorder.push_back(recursiveBorder);
+					recursiveBorder.pop_back();
+					return;
+				//}
+				//recursiveBorder.pop_back();
+			}
+			
+			return;
+		}
+
+	for(int i=0; i<pool.size(); ++i) {
+			if(!pool[i].isAdded){
+				
+				int leftIdx = pool[recursiveBorder.back()].pieces.back()->left();
+				int rightIdx = pool[i].pieces.front()->right();
+				/*std::vector<EdgeLinkInfo> links; links.resize(1);
+				links[0].a = pool[i].pieces.front();
+				links[0].b = pool[recursiveBorder.back()].pieces.back();
+				links[0].k = rightIdx;
+				links[0].l = leftIdx;
+				float c = CompareEdgesByColor(links);
+				*/
+				pool[i].isAdded=true;
+				recursiveBorder.push_back(i);
+				borderStripSearch(globalMin, recursiveMin , pool, recursiveBorder, optBorder, length-1);
+				pool[i].isAdded = false;
+				recursiveBorder.pop_back();
+
+			}
+		}
+		return;
+
+}
 void JPuzzle::AssemblyBorderMST()
 {
-	struct BorderStrip{
-		std::list<PuzzlePiece*> pieces;
-		BorderStrip(PuzzlePiece* p) {pieces.push_back(p);}
-		void addToLeft(PuzzlePiece* p) {pieces.push_front(p);}
-		void addToRight(BorderStrip& bs) {pieces.insert(pieces.end(), bs.pieces.begin(), bs.pieces.end());}
-	};
+	
 	
 	std::vector<EdgeLinkInfo> links; links.resize(1);
 	std::vector<std::vector<float> > assignMatrix;
@@ -1136,7 +1231,7 @@ void JPuzzle::AssemblyBorderMST()
 			links[0].b = it_r->pieces.front();
 			links[0].k = rightIdx;
 			links[0].l = leftIdx;
-			if(CompareEdgesByShape(links) < 3.5)
+			if(CompareEdgesByShape(links) < 4.5)
 				row.push_back(CompareEdgesByColor(links));
 			else
 				row.push_back(100000);
@@ -1145,20 +1240,114 @@ void JPuzzle::AssemblyBorderMST()
 		assignMatrix.push_back(row);
 	}
 	
-	while(borderStrips.size()>1) {
-		float min = 1000000;
+	float rc_old = 0;
+	while(borderStrips.size()>9) {
+		float row_confident = 0;
 		int min_i = -1;
 		int min_j = -1;
-		for(int i=0; i<assignMatrix.size() ; ++i)
+		//for each row find the confident
+		for(int i=0; i<assignMatrix.size() ; ++i){
+			float min = 1e5;
+			float second_min = 1e5;
+			int min_col = -1;
 			for(int j=0; j<assignMatrix[i].size(); ++j){
-				if (i != j && assignMatrix[i][j] < min) {
+				if(i==j)
+					continue;
+				if (assignMatrix[i][j] < min) {
+					second_min = min;
 					min = assignMatrix[i][j];
-					min_i = i;
-					min_j = j;
+					min_col = j;
+				} else if(assignMatrix[i][j] < second_min){
+					second_min = assignMatrix[i][j];
 				}
 			}
+			if(/*second_min < 1e5 && */(1-min/second_min) > row_confident){
+				min_i = i;
+				min_j = min_col;
+				row_confident = 1-min/second_min;
+			}
+		}
+		
+		/*
+
+			//extend to the right
+			int idxR = assignment.front();
+			min = FLT_MAX;
+			second_min = FLT_MAX;
+			int minidxR = -1;
+			for (int i = 0; i<assignMatrix.size(); ++i) {
+				if (idxR == i)
+					continue;
+				bool found = false;
+				for (std::list<int>::iterator j = assignment.begin(); j != assignment.end(); ++j){
+					if (i == *j){
+						found = true;
+						break;
+					}
+
+				}
+				if (found)
+					continue;
+
+				if (assignMatrix[i][idxR] < min){
+					second_min = min;
+					min = assignMatrix[i][idxR];
+					minidxR = i;
+				}
+				else if (assignMatrix[i][idxR] < second_min){
+					second_min = assignMatrix[i][idxR];
+				}
+			}
+
+			if ((min / second_min) > confidence){
+				//idx = minidx;
+				assignment.push_back(minidx);
+			}
+			else{
+				//idx = minidxR;
+				assignment.push_front(minidxR);
+				startidx++;
+			}
+
+		}
+		for (int i = 0; i<assignMatrix.size(); ++i) {
+			bool found = false;
+			for (std::list<int>::iterator j = assignment.begin(); j != assignment.end(); ++j){
+					if (i == *j){
+						found = true;
+						break;
+					}
+			}
+			if(!found){
+				int idxR = assignment.front();
+				int idxL = assignment.back();
+				if(assignMatrix[idxL][i] < assignMatrix[i][idxR])
+					assignment.push_back(i);
+				else{
+					assignment.push_front(i);
+					startidx++;
+				}
+				break;
+			}
+		}
+		*/
 		//minimum found, combine strips
-		borderStrips[min_i].addToRight(borderStrips[min_j]);
+		
+	    if(row_confident==0 ){//|| row_confident < rc_old/2) {
+			for (int i=0; i<borderStrips.size(); i++) {
+				float offset=i*1;
+				int count=0;
+				for (std::list<PuzzlePiece*>::iterator it = borderStrips[i].pieces.begin(); it != borderStrips[i].pieces.end(); ++it){ 
+					(*it)->transform(0, 3) += offset;
+					(*it)->transform(1, 3) +=1*count;count++;
+					m_AddedPuzzlePieces.push_back((*it));
+					m_nPiecesAdded++;
+				}
+			}
+			return;
+			break;
+		}
+		borderStrips[min_i].addToLeft(borderStrips[min_j]);
 		std::vector<BorderStrip>::iterator b_it = borderStrips.begin();
 		std::advance(b_it, min_j);
 		borderStrips.erase(b_it);
@@ -1172,12 +1361,65 @@ void JPuzzle::AssemblyBorderMST()
 			std::advance(row_it, min_j);
 			assignMatrix[i].erase(row_it);
 		}
+		rc_old = row_confident;
 	}
-
+	//combine strips
+	/*for (int i=0; i<borderStrips.size(); i++) {
+				float offset=i*1;
+				int count=0;
+				for (std::list<PuzzlePiece*>::iterator it = borderStrips[i].pieces.begin(); it != borderStrips[i].pieces.end(); ++it){ 
+					(*it)->transform(0, 3) += offset;
+					(*it)->transform(1, 3) +=1*count;count++;
+					m_AddedPuzzlePieces.push_back((*it));
+					m_nPiecesAdded++;
+				}
+			}
+			return;*/
+	float globalMin = FLT_MAX;
+	borderStrips[0].isAdded = true;
+	std::list<int> recursiveBorder;
+	std::vector<std::list<int>> optBorder;
+	recursiveBorder.push_back(0);
+	borderStripSearch(globalMin, 0, borderStrips, recursiveBorder, optBorder, borderStrips.size()-1);
+	
+	float minShapeMatch = FLT_MAX;
+	int minBorderIdx = 0;
+	for (int i=0; i<optBorder.size(); i++) {
+		std::list<int>::iterator it = optBorder[i].begin();
+		std::list<PuzzlePiece*> test_border = borderStrips[*it].pieces;
+		for(++it; it!=optBorder[i].end(); ++it){
+			test_border.insert(test_border.end(), borderStrips[*it].pieces.begin(), borderStrips[*it].pieces.end());
+		}
+		float shapeMatch=0.f;
+		for(std::list<PuzzlePiece*>::iterator it_p = test_border.begin(); it_p!=test_border.end(); ++it_p){
+			std::list<PuzzlePiece*>::iterator it_left = it_p;
+			++it_left;
+			if(it_left == test_border.end())
+				it_left = test_border.begin();
+			int leftIdx = (*it_p)->left();
+			int rightIdx = (*it_left)->right();
+			std::vector<EdgeLinkInfo> test_links; test_links.resize(1);
+			test_links[0].a = *it_left;
+			test_links[0].b = *it_p;
+			test_links[0].k = rightIdx;
+			test_links[0].l = leftIdx;
+			shapeMatch += CompareEdgesByShape(test_links);
+		}
+		if(shapeMatch < minShapeMatch){
+			minShapeMatch = shapeMatch;
+			minBorderIdx = i;
+		}
+	}
+	
+	
+	std::list<int>::iterator it = optBorder[minBorderIdx].begin();
+	std::list<PuzzlePiece*> border = borderStrips[*it].pieces;
+	for(++it; it!=optBorder[minBorderIdx].end(); ++it){
+			border.insert(border.end(), borderStrips[*it].pieces.begin(), borderStrips[*it].pieces.end());
+	}
 	std::list<PuzzlePiece*>::iterator it_left;
 	std::list<PuzzlePiece*>::iterator it_right;
 
-	std::list<PuzzlePiece*> border = borderStrips[0].pieces;
 	for(std::list<PuzzlePiece*>::iterator it = border.begin(); it != border.end(); ++it) {
 		if(*it == m_AddedPuzzlePieces[0]){
 			it_left = it;
@@ -1290,6 +1532,250 @@ void JPuzzle::AssemblyBorderMST()
 		m_AddedPuzzlePieces[m_nPiecesAdded-1]->adjPieces[lastEdgeIndex] = m_AddedPuzzlePieces[0];
 		m_AddedPuzzlePieces[m_nPiecesAdded-1]->edgeCovered[lastEdgeIndex] = 1;*/
 }
+
+void JPuzzle::borderSearch(float& globalMin, float recursiveMin, std::vector<PuzzlePiece*>& pool, std::list<int>& border, std::list<int>& optBorder, const std::vector<std::vector<float> >& assignMatrix, int length) {
+		int idxL = border.back();
+		std::vector<float> row = assignMatrix[idxL];
+		if (length==1){
+			//find a minimum corner
+			float min_corner = FLT_MAX;
+			int min_idx = -1;
+			for (int i = 0; i<pool.size(); ++i) {
+				if(pool[i]->isAdded==1)
+					continue;
+				if(pool[i]->borders().size()==2){
+					if (row[i] < min_corner){
+						min_corner = row[i];
+						min_idx = i;
+					}
+				}
+			}
+			
+			//update min
+			if(min_idx==-1 && recursiveMin < globalMin) {
+				globalMin = recursiveMin;
+				optBorder = border;
+			}
+			else if(min_idx>-1 && recursiveMin+min_corner < globalMin){
+				globalMin = recursiveMin+min_corner;
+				border.push_back(min_idx);
+				optBorder = border;
+				border.pop_back();
+			}
+			return;
+		}
+		//find a non-corner minimum border piece
+		//extend to the left
+		float min = FLT_MAX;
+		float second_min = FLT_MAX;
+		int minidx = -1;
+		int secondidx = -1;
+		for (int i = 0; i<row.size(); ++i) {
+			if (idxL == i)
+				continue;
+			if(pool[i]->isAdded || pool[i]->borders().size()==2)
+				continue;
+			if (row[i] < min){
+				second_min = min;
+				secondidx = minidx;
+				min = row[i];
+				minidx = i;
+			}
+			else if (row[i] < second_min){
+				second_min = row[i];
+				secondidx = i;
+			}
+		}
+		//recursive call update min if necessary
+		pool[minidx]->isAdded = 1;
+		border.push_back(minidx);
+		borderSearch(globalMin, recursiveMin + min, pool, border, optBorder, assignMatrix, length-1);
+		pool[minidx]->isAdded = 0;
+		border.pop_back();
+		
+		//find a second minimum border piece
+		if(secondidx != -1){
+			pool[secondidx]->isAdded = 1;
+			border.push_back(secondidx);
+			//recursive call
+			borderSearch(globalMin, recursiveMin + second_min, pool, border, optBorder, assignMatrix, length-1);
+			pool[secondidx]->isAdded = 0;
+			border.pop_back();
+		}
+
+	};
+
+void JPuzzle::AssemblyBorderWithDimension(int w, int h)
+{
+	
+		std::vector<EdgeLinkInfo> links; links.resize(1);
+		std::vector<std::vector<float> > assignMatrix;
+		std::vector<PuzzlePiece*> borderPieces;
+		//MatrixXf mat;
+
+		int startidx = 0;
+		borderPieces.push_back(m_AddedPuzzlePieces[0]);
+
+		for (std::vector<PuzzlePiece*>::iterator it = m_NotAddedPuzzlePieces.begin(); it != m_NotAddedPuzzlePieces.end(); ++it) {
+			if ((*it)->isBorderPiece){
+				borderPieces.push_back(*it);
+			}
+		}
+
+		//row i col j: score for putting i to the right of j
+		for (std::vector<PuzzlePiece*>::iterator it_r = borderPieces.begin(); it_r != borderPieces.end(); ++it_r) {
+			std::vector<float> row;
+			for (std::vector<PuzzlePiece*>::iterator it_c = borderPieces.begin(); it_c != borderPieces.end(); ++it_c) {
+				int leftIdx = (*it_r)->left();
+				int rightIdx = (*it_c)->right();
+				links[0].a = *it_c;
+				links[0].b = *it_r;
+				links[0].k = rightIdx;
+				links[0].l = leftIdx;
+				if(CompareEdgesByShape(links) < 4)
+					row.push_back(CompareEdgesByColor(links));
+				else
+					row.push_back(100000);
+				//cout << Sim((*it_)->right(), (*it)->left()) << ' ' << (*it_)->orientation << ' ' << (*it)->orientation << endl;
+			}
+			assignMatrix.push_back(row);
+		}
+
+		//extend to left border of length w
+		std::list<int> border[4];
+		
+		std::list<int> optBorder[4];
+
+		for(int i=0; i<4; ++i) {
+			if(i==0)
+				border[i].push_back(startidx);
+			else
+				border[i].push_back(optBorder[i-1].back());
+			float globalMin = FLT_MAX;
+			if(i%2==0)
+				borderSearch(globalMin, 0, borderPieces, border[i], optBorder[i], assignMatrix, w-1);
+			else
+				borderSearch(globalMin, 0, borderPieces, border[i], optBorder[i], assignMatrix, h-1);
+			for(std::list<int>::iterator it=optBorder[i].begin(); it != optBorder[i].end(); ++it)
+				borderPieces[*it]->isAdded = 1;
+		}
+		std::list<int> borders;
+		borders.insert(borders.begin(), optBorder[0].begin(), optBorder[0].end());
+		for(int i=1; i<4; ++i){
+			std::list<int>::iterator it = optBorder[i].begin();
+			++it;
+			borders.insert(borders.end(),it, optBorder[i].end());
+		}
+		std::list<int>::iterator it = borders.begin();
+		//std::advance(it, startidx);
+		std::list<int>::iterator it_left = it;
+		std::list<int>::iterator it_right = it;
+		while (m_nPiecesAdded < borderPieces.size()){
+			EdgeLinkInfo measure;
+			if(++it_left != borders.end()){
+				measure.a = borderPieces[*(--it_left)];
+				measure.b = borderPieces[*(++it_left)];
+				measure.k = (measure.a)->left();
+				measure.l = (measure.b)->right();			
+				//float measure;
+				for (int i = 0; i < m_NotAddedPuzzlePieces.size(); ++i){
+					if (measure.b == m_NotAddedPuzzlePieces[i]){
+						//measure.j = i;
+						break;
+					}
+				}
+				MovePiece(measure);
+				measure.a->adjPieces[measure.k] = measure.b;
+				measure.a->edgeCovered[measure.k] = 1;
+				measure.b->adjPieces[measure.l] = measure.a;
+				measure.b->edgeCovered[measure.l] = 1;
+				measure.b->isAdded = 1;
+				m_nPiecesAdded++;
+			}
+			if(it_left ==borders.end())
+				--it_left;
+			/*if(it_right != borders.begin()){
+				measure.a = borderPieces[*(it_right)];
+				measure.b = borderPieces[*(--it_right)];
+				measure.k = (measure.a)->right();
+				measure.l = (measure.b)->left();			
+				//float measure;
+				for (int i = 0; i < m_NotAddedPuzzlePieces.size(); ++i){
+					if (measure.b == m_NotAddedPuzzlePieces[i]){
+						//measure.j = i;
+						break;
+					}
+				}
+				MovePiece(measure);
+				measure.a->adjPieces[measure.k] = measure.b;
+				measure.a->edgeCovered[measure.k] = 1;
+				measure.b->adjPieces[measure.l] = measure.a;
+				measure.b->edgeCovered[measure.l] = 1;
+				measure.b->isAdded = 1;
+				m_nPiecesAdded++;
+			}*/
+			  
+		}
+
+		PuzzlePiece * toLink[2] = {0,0};
+		for (int i=0, count=0; i<m_nPiecesAdded; i++) {
+			int sum=0;
+			for (int j=0; j<4; j++)
+				sum += m_AddedPuzzlePieces[i]->adjPieces[j] ? 1 : 0;
+			if (sum == 1)
+				toLink[count++] = m_AddedPuzzlePieces[i];
+		}
+		
+		int edgeIndices[2];
+		for (int i=0; i<2; i++) {
+			int sum = (int)toLink[i]->edgeIsBorder[0]+(int)toLink[i]->edgeIsBorder[1]+
+				(int)toLink[i]->edgeIsBorder[2]+(int)toLink[i]->edgeIsBorder[3];
+			if (sum == 1) {
+				int index=0;
+				for (; toLink[i]->adjPieces[index] == NULL; index++) {}
+				edgeIndices[i] = (index+2)%4;
+			} else {
+				edgeIndices[i] = 0;
+				for (; toLink[i]->adjPieces[edgeIndices[i]] != NULL || toLink[i]->edgeIsBorder[edgeIndices[i]]; edgeIndices[i]++) {}
+			}
+		}
+		for (int i=0; i<2; i++) {
+			toLink[i]->adjPieces[edgeIndices[i]] = toLink[(i+1)%2];
+			toLink[i]->edgeCovered[edgeIndices[i]] = 1;
+		}
+
+		/*
+		PuzzlePiece * previous = m_AddedPuzzlePieces[2];
+		PuzzlePiece * next = m_AddedPuzzlePieces[0];
+		while (next != NULL) {
+			char buf[256];
+			sprintf(buf, "\n%i\n", next->index);
+			OutputDebugStringA(buf);
+			bool notFound=1;
+			for (int i=3; i>=0; i--)  {
+				if (next->adjPieces[i] != NULL && next->adjPieces[i] != previous) {
+					previous = next;
+					next = next->adjPieces[i];
+					notFound=0;
+					break;
+				}
+			}
+			if(notFound) break;
+
+		}*/
+
+		// Link first piece with last piece
+		/*int firstEdgeIndex=0, lastEdgeIndex=0;
+		while (m_AddedPuzzlePieces[0]->edgeCovered[firstEdgeIndex]) firstEdgeIndex++;
+		while (m_AddedPuzzlePieces[m_nPiecesAdded-1]->edgeIsBorder[lastEdgeIndex]) lastEdgeIndex++;
+		if (m_AddedPuzzlePieces[m_nPiecesAdded-1]->edgeCovered[(lastEdgeIndex+1)%4]) 
+			lastEdgeIndex = lastEdgeIndex-1 < 0 ? 3 : lastEdgeIndex-1;
+		m_AddedPuzzlePieces[0]->adjPieces[firstEdgeIndex] = m_AddedPuzzlePieces[m_nPiecesAdded-1];
+		m_AddedPuzzlePieces[0]->edgeCovered[firstEdgeIndex] = 1;
+		m_AddedPuzzlePieces[m_nPiecesAdded-1]->adjPieces[lastEdgeIndex] = m_AddedPuzzlePieces[0];
+		m_AddedPuzzlePieces[m_nPiecesAdded-1]->edgeCovered[lastEdgeIndex] = 1;*/
+}
+
 int CompareEdgeMeasures(const void * a, const void * b) 
 {
 	if (*(float*)a <  *(float*)b) return (int)-1;
@@ -1348,6 +1834,8 @@ void JPuzzle::FindNeighbors(PuzzlePiece & a, PuzzlePiece & b, int k, int l, std:
 		currentAddedEdgeIndex = nextEdgeIndex;
 	}
 
+
+
 	if (links.size() < 4) {
 		currentAdded = &a;
 		currentAddedEdgeIndex = k;
@@ -1358,6 +1846,7 @@ void JPuzzle::FindNeighbors(PuzzlePiece & a, PuzzlePiece & b, int k, int l, std:
 			currentAddedEdgeIndex = nextEdgeIndex;
 		}
 	}
+
 
 	if (links.size() < 4) {
 		// Center edge
@@ -1426,7 +1915,7 @@ void JPuzzle::ComparePieces()
 	//OutputDebugStringA(buf);
 	int count=0;
 	for (int i=0; i<nMeasures; i++) {
-		if (measures[i].measure < 3) count++;
+		if (measures[i].measure < 4.) count++;
 		out7 << measures[i].measure << std::endl;
 	}
 
